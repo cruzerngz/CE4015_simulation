@@ -1,5 +1,7 @@
 [workspace]
-members = ["crates/sim"]
+resolver = "2"
+members = ["crates/*"]
 
 
-
+[workspace.dependencies]
+probability = "0"
