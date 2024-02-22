@@ -13,10 +13,10 @@ pub enum SimStatus {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct Event;
+pub struct Event;
 
 #[derive(Clone, Copy, Debug)]
-struct Process;
+pub struct Process;
 
 /// Event-based simulators implement this iterator-like trait.
 ///
@@ -27,6 +27,7 @@ pub trait EventLike: Sized {
 }
 
 /// Iterator wrapper
+#[derive(Clone)]
 pub struct EventIterator<T: EventLike> {
     inner: T,
 }
@@ -55,32 +56,6 @@ impl<T: EventLike> Iterator for EventIterator<T> {
     }
 }
 
-fn asd<T: Iterator<Item = SimStatus>>(i: T) {
-    for status in i.into_iter() {
-        ()
-    }
-}
-
-struct MySim;
-impl EventLike for MySim {
-    fn next_event(&mut self) -> SimStatus {
-        SimStatus::Continue
-    }
-}
-
-fn def() {
-    let x = MySim;
-
-    let x_i = x.to_event_iter();
-
-    // asd(x_i);
-
-    let executor: SimExecutor<Event, EventIterator<MySim>> = SimExecutor {
-        iter: x_i,
-        _marker: std::marker::PhantomData,
-    };
-}
-
 /// Process-based simulators implement this trait.
 ///
 /// Process-based simulators run with an internal clock, in a tick-by-tick fashion.
@@ -91,29 +66,68 @@ pub trait ProcessLike: Sized {
     fn next_tick(&mut self, update: Self::Update) -> SimStatus;
 }
 
-pub struct SimExecutor<T, P: Iterator<Item = SimStatus>> {
+/// The runner for the sim
+#[derive(Clone)]
+pub struct SimExecutor<T, P: Iterator<Item = SimStatus> + Clone> {
     iter: P,
 
     _marker: core::marker::PhantomData<T>,
 }
 
-impl<Sim> SimExecutor<Event, Sim>
+// impl<Sim, I> SimExecutor<Event, I>
+// where
+//     Sim: ToEventIterator,
+//     I: Iterator<Item = SimStatus>
+// {
+
+// }
+
+// impl<Sim> SimExecutor<Event, Sim>
+// where
+//     Sim: Iterator<Item = SimStatus> + Clone,
+// {
+//     pub fn from_event(event: Sim) -> Self {
+//         Self {
+//             iter: event,
+//             _marker: std::marker::PhantomData,
+//         }
+//     }
+// }
+
+// impl<Sim: Iterator<Item = SimStatus> + Clone> SimExecutor<Process, Sim> {
+//     pub fn from_process(proc: Sim) -> Self {
+//         Self {
+//             iter: proc,
+//             _marker: std::marker::PhantomData,
+//         }
+//     }
+// }
+
+impl<T, I> SimExecutor<T, I>
 where
-    Sim: Iterator<Item = SimStatus>,
+    I: Iterator<Item = SimStatus> + Clone,
 {
-    pub fn from_event(event: Sim) -> Self {
+    /// Construct an executor from an iterator that yields [SimStatus]
+    pub fn from_iterator(iter: I) -> Self {
         Self {
-            iter: event.into_iter(),
+            iter,
             _marker: std::marker::PhantomData,
         }
     }
 }
 
-impl<Sim: Iterator<Item = SimStatus>> SimExecutor<Process, Sim> {
-    pub fn from_process(proc: Sim) -> Self {
-        Self {
-            iter: proc.into_iter(),
-            _marker: std::marker::PhantomData,
+impl<T, Sim> SimExecutor<T, Sim>
+where
+    Sim: Iterator<Item = SimStatus> + Clone,
+{
+    /// Runs the simulation to completion
+    pub fn execute(&mut self) -> SimStatus {
+        let mut final_step = SimStatus::Continue;
+
+        for step in self.iter.clone() {
+            final_step = step;
         }
+
+        final_step
     }
 }
