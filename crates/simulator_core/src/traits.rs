@@ -1,4 +1,3 @@
-
 /// Status of simulation.
 #[derive(Clone, Copy, Debug)]
 pub enum SimStatus {
@@ -18,14 +17,52 @@ pub struct Process;
 ///
 /// Each step in the simulation advances an arbitrary amount of time.
 pub trait EventLike: Sized {
+    /// The result of stepping through one event.
+    ///
+    /// This type should contain details about the event that was just processed,
+    /// like the values of any random variables, etc.s
+    type EventResult;
+
+    type Event;
+
     /// Advance the simulation to the next enqueued event
-    fn next_event(&mut self) -> SimStatus;
+    fn next_event(&mut self) -> Option<Self::EventResult>;
+
+    /// Initialize the discrete event simulator with a set of initial events
+    fn initialize_initial_events<E: AsRef<[Self::Event]>>(&mut self, initial_ev: E);
 }
 
 /// Iterator wrapper
 #[derive(Clone)]
-pub struct EventIterator<T: EventLike> {
+pub struct EventIterator<T>
+where
+    T: EventLike,
+{
     inner: T,
+}
+
+impl<T> From<T> for EventIterator<T>
+where
+    T: EventLike,
+{
+    fn from(value: T) -> Self {
+        value.to_event_iter()
+    }
+}
+
+impl<T> EventIterator<T>
+where
+    T: EventLike,
+{
+    /// Initialize the simulator with a sequence of initial events
+    pub fn with_initial_events<E>(mut self, ev: E) -> Self
+    where
+        E: AsRef<[<T as EventLike>::Event]>,
+    {
+        self.inner.initialize_initial_events(ev);
+
+        self
+    }
 }
 
 // Blanket trait that includes Iterator functionality
@@ -39,27 +76,14 @@ pub trait ToEventIterator: EventLike {
 }
 
 // blanket impl
-impl<T: EventLike> ToEventIterator for T {}
+impl<T> ToEventIterator for T where T: EventLike {}
 
 impl<T: EventLike> Iterator for EventIterator<T> {
-    type Item = SimStatus;
+    type Item = <T as EventLike>::EventResult;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.inner.next_event() {
-            SimStatus::Continue => Some(SimStatus::Continue),
-            SimStatus::Stop => None,
-        }
+        self.inner.next_event()
     }
-}
-
-/// Process-based simulators implement this trait.
-///
-/// Process-based simulators run with an internal clock, in a tick-by-tick fashion.
-pub trait ProcessLike: Sized {
-    /// Data to be injected into the simulation, if applicable
-    type Update;
-
-    fn next_tick(&mut self, update: Self::Update) -> SimStatus;
 }
 
 /// The runner for the sim
@@ -69,35 +93,6 @@ pub struct SimExecutor<T, P: Iterator<Item = SimStatus> + Clone> {
 
     _marker: core::marker::PhantomData<T>,
 }
-
-// impl<Sim, I> SimExecutor<Event, I>
-// where
-//     Sim: ToEventIterator,
-//     I: Iterator<Item = SimStatus>
-// {
-
-// }
-
-// impl<Sim> SimExecutor<Event, Sim>
-// where
-//     Sim: Iterator<Item = SimStatus> + Clone,
-// {
-//     pub fn from_event(event: Sim) -> Self {
-//         Self {
-//             iter: event,
-//             _marker: std::marker::PhantomData,
-//         }
-//     }
-// }
-
-// impl<Sim: Iterator<Item = SimStatus> + Clone> SimExecutor<Process, Sim> {
-//     pub fn from_process(proc: Sim) -> Self {
-//         Self {
-//             iter: proc,
-//             _marker: std::marker::PhantomData,
-//         }
-//     }
-// }
 
 impl<T, I> SimExecutor<T, I>
 where

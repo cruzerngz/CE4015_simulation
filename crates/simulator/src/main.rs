@@ -22,6 +22,8 @@
 // }
 
 
+mod event;
+
 fn main() {
     println!("hello sim world!")
 }
