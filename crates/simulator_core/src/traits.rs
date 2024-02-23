@@ -1,3 +1,5 @@
+//! Core traits for running a simulations
+
 /// Status of simulation.
 #[derive(Clone, Copy, Debug)]
 pub enum SimStatus {

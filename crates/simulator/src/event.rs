@@ -17,6 +17,12 @@ pub struct Event {
     /// Direction of vehicle
     direction: VehicleDirection,
 
+    /// Station currently in range of vehicle
+    station: BaseStation,
+
+    /// Position of vehicle relative to station
+    position: StationPosition,
+
     inner: EventType,
 }
 
@@ -24,7 +30,7 @@ pub struct Event {
 #[derive(Clone, Debug)]
 enum EventType {
     /// A call is initiated by a customer
-    InitiateCall,
+    InitiateCall {},
 
     /// A call is terminated by a customer
     TerminateCall,
@@ -46,32 +52,47 @@ pub enum VehicleDirection {
 }
 
 /// The base stations servicing a vehicle.
+/// This enum will be used to index into the base station vector.
 ///
 /// Why use this instead of just a number?
 /// Type safety boi
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[repr(u32)] // Castable to u32
 pub enum BaseStation {
-    One = 1,
-    Two = 2,
-    Three = 3,
-    Four = 4,
-    Five = 5,
-    Six = 6,
-    Seven = 7,
-    Eight = 8,
-    Nine = 9,
-    Ten = 10,
-    Eleven = 11,
-    Twelve = 12,
-    Thirteen = 13,
-    Fourteen = 14,
-    Fifteen = 15,
-    Sixteen = 16,
-    Seventeen = 17,
-    Eighteen = 18,
-    Nineteen = 19,
-    Twenty = 20,
+    One = 0,
+    Two = 1,
+    Three = 2,
+    Four = 3,
+    Five = 4,
+    Six = 5,
+    Seven = 6,
+    Eight = 7,
+    Nine = 8,
+    Ten = 9,
+    Eleven = 10,
+    Twelve = 11,
+    Thirteen = 12,
+    Fourteen = 13,
+    Fifteen = 14,
+    Sixteen = 15,
+    Seventeen = 16,
+    Eighteen = 17,
+    Nineteen = 18,
+    Twenty = 19,
+}
+
+/// Position of vehicle relative to the base station
+#[derive(Clone, Debug)]
+pub enum StationPosition {
+    /// Vehicle is at the western end of the station's coverage
+    /// area.
+    WestEnd,
+    /// Vehicle is at the eastern end of the station's coverage
+    /// area.
+    EastEnd,
+
+    /// Vehicle is somewhere along the station's coverage area, measured from
+    /// the west.
+    Other(f64),
 }
 
 impl PartialEq for Event {
