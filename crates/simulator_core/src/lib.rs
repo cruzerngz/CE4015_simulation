@@ -1,3 +1,7 @@
+mod traits;
+
+pub use traits::*;
+
 pub fn add(left: usize, right: usize) -> usize {
     left + right
 }

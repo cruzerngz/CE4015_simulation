@@ -1,7 +1,3 @@
-//! Common traits and data structures
-//!
-
-use std::path::Iter;
 
 /// Status of simulation.
 #[derive(Clone, Copy, Debug)]
