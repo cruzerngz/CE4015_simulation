@@ -1,9 +1,5 @@
-#set text(
-  size: 1.5em,
-  weight: "bold"
-)
-
-#align(center, [
+// cover page
+#align(center, text(size: 1.5em, weight: "bold")[
 
   #image("media/ntu_logo.svg", width: 75%)
 
