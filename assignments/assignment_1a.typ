@@ -9,7 +9,7 @@
   #linebreak()
   #linebreak()
   #linebreak()
-  2023/2024 Semester 1 Assignment 1:
+  2023/2024 Semester 2 Assignment 1 part 1:
 
   Design of a discrete event simulator
   #linebreak()
