@@ -234,7 +234,7 @@ The process of handing over a call is as follows:
   } else {#i\
 
     $N_"blocked" = N_"blocked" + 1$\
-    #smallcaps[UpdateGraph]\($A_"blocked"$, CurrentTime)\
+    #smallcaps[UpdateGraph]\($A_"dropped"$, CurrentTime)\
     #smallcaps[UpdateCallState]\(Complete)\
     return#d\
   }\ \
@@ -333,6 +333,6 @@ After all calls have been processed ($N_"calls" == "TotalCalls"$), the simulator
 
 The following statistics are derived:
 
-1. $P_"dropped" = C_"dropped" / N_"calls"$:
+1. $P_"dropped" = C_"dropped" / N_"calls"$
 
-2. $P_"blocked" = C_"blocked" / N_"calls"$:
+2. $P_"blocked" = C_"blocked" / N_"calls"$
