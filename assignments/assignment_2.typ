@@ -233,7 +233,7 @@ The process of handing over a call is as follows:
     pass #d\
   } else {#i\
 
-    $N_"blocked" = N_"blocked" + 1$\
+    $N_"dropped" = N_"dropped" + 1$\
     #smallcaps[UpdateGraph]\($A_"dropped"$, CurrentTime)\
     #smallcaps[UpdateCallState]\(Complete)\
     return#d\
