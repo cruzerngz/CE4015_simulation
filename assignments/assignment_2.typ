@@ -32,12 +32,17 @@
   #pagebreak()
 ])
 
-#set page(numbering: "1")
-#set text(size: 11pt, weight: "regular")
-#set heading(numbering: "1.1")
-
 // import algo package
 #import "@preview/algo:0.3.3": algo, i, d, comment, code
+
+#set page(numbering: "1")
+#set text(size: 11pt, weight: "regular")
+#set heading(numbering: "1.1.")
+
+#outline(title: "Table of Contents", indent: true)
+#linebreak()
+#outline(title: "Figures", target: figure.where(kind: image))
+#pagebreak()
 
 = Overview
 Design a process-oriented simulator for simulating the utilisation of a cell network over a section of highway.
@@ -48,9 +53,9 @@ Design a process-oriented simulator for simulating the utilisation of a cell net
 3. Base stations do not overlap in their coverage
 4. Vehicles can traverse the highway in both directions
 
-== Assumptions
-1. Users can initiate a call from any point within the highway, with probability distribution $X$
-2. Users enter the highway from either direction with equal probability
+== Input modelling <input_modelling>
+1. Users can initiate a call from any base station, with probability distribution $X$
+2. Users enter the highway from either direction with equal probability (i.e. 50% chance of entering from the left, 50% chance of entering from the right)
 3. The position of a vehicle within the coverage of the base station is uniformly distributed
 4. The velocity of each vehicle follows a probability distribution $Y$, and stays constant until the vehicle leaves the highway
 5. The call duration follows a probability distribution $Z$
@@ -62,8 +67,7 @@ Design a process-oriented simulator for simulating the utilisation of a cell net
   - The number of calls dropped
   - The number of calls blocked
 
-
-= Shared variables
+= Shared variables <shared_variables>
 
 == Counters <counters>
 1. $N_"calls"$: Total number of calls initiated
@@ -72,19 +76,22 @@ Design a process-oriented simulator for simulating the utilisation of a cell net
 4. $A_"initiated"$: The number of calls initiated with respect to time
 5. $A_"dropped"$: The number of calls dropped with respect to time
 6. $A_"blocked"$: The number of calls blocked with respect to time
+7. $"BSA"_n$: Base station $n$'s availability with respect to time, $1 <= n <= 20$
 
 // can't think of a better name
 == Resources
-1. $"BS"_n$: Base station $n, 1 <= n <= 20$
-2. 10 channels per base station ($"BS"_"1..20" = 10$ when initialized)
+Each base station $n$, is held behind a mutex. $"BS"_n, 1 <= n <= 20$.
+There are 10 available channels for each base station. ($"BS"_"1..20" = 10$ when initialized)
 
 #pagebreak()
 = Process
+Each step in the process is outlined in the following sections.
 
 // init counters and globals
 == Initialization
 #algo(
   title: "Init",
+  parameters: ("TotalCalls",),
   block-align: left,
   radius: 3pt
 )[
@@ -102,22 +109,28 @@ Design a process-oriented simulator for simulating the utilisation of a cell net
     $"BS"_n = 10$#d\
   }\
   \
-  #comment[generate calls based on distributions $X, Y, Z$]
-  let EnqueuedCalls = generate_calls()\
+  #comment[generate calls based on distributions $X, Y, Z$ and uniform distributions in @input_modelling]
+  let EnqueuedCalls = #smallcaps[GenerateCalls]\()\
   EnqueuedCalls.sort()\
   \
   for call in EnqueuedCalls {#i\
-    spawn(UserProcess(call))#d\
+    #comment[spawn all pending processes]
+    #smallcaps[Spawn]\(#smallcaps[UserProcess]\(call))#d\
   }\
 
  \
   #comment[clock cycle starts]
   while SystemTime < StopTime {#i\
+
+    if $N_"calls"$ == TotalCalls { *break* }\
+
     SystemTime = SystemTime + 1\
-    Wait(1)#d\
+    #comment[wait until all base station locks are no longer held]
+    #smallcaps[WaitUntilFree]\($"BS"_{1..20}$)#d\
   }
 ]
 
+#pagebreak()
 == User
 The user process can be split into 3 parts:
 1. Call initiation
@@ -131,13 +144,13 @@ The user process can be split into 3 parts:
   radius: 3pt
 )[
   #comment[wait until the call starts]
-  WaitUntil(Call.Start)\ \
+  #smallcaps[WaitUntil]\(Call.Start)\ \
 
   *loop* {#i\
     *match* CallState {#i\
-      Initiate $->$ InitiateCall(CurrentBaseStation)\
-      Handover $->$ HandoverCall(CurrentBaseStation)\
-      Terminate $->$ TerminateCall(CurrentBaseStation)\
+      Initiate $->$ #smallcaps[InitiateCall]\(CurrentBaseStation)\
+      Handover $->$ #smallcaps[HandoverCall]\(CurrentBaseStation)\
+      Terminate $->$ #smallcaps[TerminateCall]\(CurrentBaseStation)\
       Complete $->$ *break* #d\
     }#d\
   }
@@ -155,37 +168,52 @@ The process of initiating a call is as follows:
   radius: 3pt
 )[
   $N_"calls" = N_"calls" + 1$ \
-  update_graph($A_"initiated"$, CurrentTime)\ \
+  #smallcaps[UpdateGraph]\($A_"initiated"$, CurrentTime)\ \
 
-  if request(BaseStation) succeeds {#i #comment[see @base_station]\
-    pass #d\
+  if #smallcaps[Request]\(BaseStation) succeeds {#i #comment[see @base_station]\
+    *pass* #d\
   } else {#i\
 
-    $N_"blocked" = N_"dropped" + 1$\
-    update_graph($A_"dropped"$, CurrentTime)\
-
+    $N_"blocked" = N_"blocked" + 1$\
+    #smallcaps[UpdateGraph]\($A_"blocked"$, CurrentTime)\
+    #smallcaps[UpdateCallState]\(Complete)\
     return#d\
   }\ \
 
   let BaseStationBoundary = $"DistanceToCellBoundary" / "VehicleVelocity"$\
 
-  if BaseStationBoundary > CallDuration and \
-    exists(BaseStation + NextStation) {#i\
-    let HandoverTime = CurrentTime + BaseStationBoundary\
+  if BaseStationBoundary > CallDuration {#i\
 
-    update_call_state(Handover)\
-    $"CurrentBaseStation" = "BaseStation" + "NextStation"$\
-    $"CallDuration" = "CallDuration" - "BaseStationBoundary"$\
-    #comment[go to @call_handover]
-    WaitUntil(HandoverTime)
+    #comment[check if call is going out of bounds]
+    if #smallcaps[Exists]\(BaseStation + NextStation) {#i\
+
+     let HandoverTime = CurrentTime + BaseStationBoundary\
+
+      #smallcaps[UpdateCallState]\(Handover)\
+      $"CurrentBaseStation" = "BaseStation" + "NextStation"$\
+      $"CallDuration" = "CallDuration" - "BaseStationBoundary"$\
+      #comment[go to @call_handover]
+      #smallcaps[WaitUntil]\(HandoverTime)
+      #d\
+    } else {#i\
+      let TerminationTime = CurrentTime + BaseStationBoundary\
+
+      #smallcaps[UpdateCallState]\(Terminate)\
+      // $"CurrentBaseStation" = "BaseStation" + "NextStation"$\
+      $"CallDuration" = 0$\
+      #comment[go to @call_termination]
+      #smallcaps[WaitUntil]\(TerminationTime)
+      #d\
+    }
+
   #d\
   } else {#i\
 
     let TerminationTime = CurrentTime + CallDuration\
-    update_call_state(Terminate)\
+    #smallcaps[UpdateCallState]\(Terminate)\
     $"CallDuration" = 0$\
     #comment[go to @call_termination]
-    WaitUntil(TerminationTime)
+    #smallcaps[WaitUntil]\(TerminationTime)
 
   #d\
   }
@@ -201,41 +229,55 @@ The process of handing over a call is as follows:
   block-align: left,
   radius: 3pt
 )[
-  if request(BaseStation) succeeds {#i\
+  if #smallcaps[Request]\(BaseStation) succeeds {#i\
     pass #d\
   } else {#i\
 
     $N_"blocked" = N_"blocked" + 1$\
-    update_graph($A_"blocked"$, CurrentTime)\
-
+    #smallcaps[UpdateGraph]\($A_"blocked"$, CurrentTime)\
+    #smallcaps[UpdateCallState]\(Complete)\
     return#d\
   }\ \
 
-  #comment[same logic as @call_initiation]
-  let BaseStationBoundary = $"DistanceToCellBoundary" / "VehicleVelocity"$\
+  #comment[similar logic to @call_initiation]
+  if BaseStationBoundary > CallDuration {#i\
 
-  if BaseStationBoundary > CallDuration and \
-    exists(BaseStation + NextStation) {#i\
-    let HandoverTime = CurrentTime + BaseStationBoundary\
+    #comment[check if call is going out of bounds]
+    if #smallcaps[Exists]\(BaseStation + NextStation) {#i\
 
-    update_call_state(Handover)\
-    $"CurrentBaseStation" = "BaseStation" + "NextStation"$\
-    $"CallDuration" = "CallDuration" - "BaseStationBoundary"$\
-    #comment[go to @call_handover]
-    WaitUntil(HandoverTime)
+     let HandoverTime = CurrentTime + BaseStationBoundary\
+
+      #smallcaps[UpdateCallState]\(Handover)\
+      $"CurrentBaseStation" = "BaseStation" + "NextStation"$\
+      $"CallDuration" = "CallDuration" - "BaseStationBoundary"$\
+      #comment[go to @call_handover]
+      #smallcaps[WaitUntil]\(HandoverTime)
+      #d\
+    } else {#i\
+      let TerminationTime = CurrentTime + BaseStationBoundary\
+
+      #smallcaps[UpdateCallState]\(Terminate)\
+      // $"CurrentBaseStation" = "BaseStation" + "NextStation"$\
+      $"CallDuration" = 0$\
+      #comment[go to @call_termination]
+      #smallcaps[WaitUntil]\(TerminationTime)
+      #d\
+    }
+
   #d\
   } else {#i\
 
     let TerminationTime = CurrentTime + CallDuration\
-    update_call_state(Terminate)\
+    #smallcaps[UpdateCallState]\(Terminate)\
     $"CallDuration" = 0$\
     #comment[go to @call_termination]
-    WaitUntil(TerminationTime)
+    #smallcaps[WaitUntil]\(TerminationTime)
 
   #d\
   }
 ]
 
+#pagebreak()
 === Call termination <call_termination>
 The process of terminating a call is as follows:
 
@@ -247,21 +289,50 @@ The process of terminating a call is as follows:
 )[
   #comment[terminations will always succeed]
   release(BaseStation)\
-  update_call_state(Complete)
+  #smallcaps[UpdateCallState]\(Complete)
 ]
 
 == Base station <base_station>
+
+=== Allocation
 A base station awaits for allocation requests and handles a request according to the following:
 #figure(
   image("media/proc_base-station.svg", width: 70%),
   caption: [A flow chart of how a base station allocates calls]
 )
 
+On successful allocation, the base station will decrement the number of available channels by 1 as well as update the graph $"BSA"_n$:
+
+#algo(
+  title: "SuccessfulAllo",
+  // parameters: ("StationNumber",),
+  block-align: left,
+  radius: 3pt
+)[
+  $"BS"_n = "BS"_n - 1$\
+  #smallcaps[UpdateGraph]\($"BSA"_n$, CurrentTime, decrement)\
+]
+
+=== Deallocation
+During channel deallocation, a base station $n$ awaits a request and performs the following.
+
+#algo(
+  title: "Deallocate",
+  parameters: ("StationNumber",),
+  block-align: left,
+  radius: 3pt
+)[
+  $"BS"_n = "BS"_n + 1$\
+  #smallcaps[UpdateGraph]\($"BSA"_n$, CurrentTime, increment)\
+]
+
+
 #linebreak()
-During channel deallocation, a base station $n$ awaits a request and performs the following:
-
-$"BS"_n = "BS"_n + 1$: Increment the number of available channels for base station $n$
-
 == Termination
-After all calls have been processed, the simulator will terminate and output the statistics.
+After all calls have been processed ($N_"calls" == "TotalCalls"$), the simulator will terminate and output statistics defined in @shared_variables.
 
+The following statistics are derived:
+
+1. $P_"dropped" = C_"dropped" / N_"calls"$:
+
+2. $P_"blocked" = C_"blocked" / N_"calls"$:
