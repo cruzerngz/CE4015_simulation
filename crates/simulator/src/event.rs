@@ -1,36 +1,63 @@
 //! Event definition for the simulator
 
-use std::clone;
+use serde::Serialize;
+
+/// Common float type for the simulator
+type FloatingPoint = f32;
 
 /// A discrete event in the simulator
 #[derive(Clone, Debug)]
-pub struct Event {
-    /// Time when vehicle first enters either end of the highway
-    time: f64,
+pub struct CellEvent {
+    /// Time of event
+    pub time: FloatingPoint,
+    pub ty: CellEventType,
 
     /// Time to next base station.
-    ttn: f64,
+    pub ttn: FloatingPoint,
 
-    /// Speed of vehicle, km/h
-    velocity: f64,
+    /// Speed of vehicle,pub  km/h
+    pub velocity: FloatingPoint,
 
     /// Direction of vehicle
-    direction: VehicleDirection,
+    pub direction: VehicleDirection,
 
     /// Station currently in range of vehicle
-    station: BaseStation,
+    pub station: BaseStation,
 
     /// Position of vehicle relative to station
-    position: StationPosition,
+    pub position: RelativeVehiclePosition,
+}
 
-    inner: EventType,
+/// Result of an event
+#[derive(Debug, Serialize)]
+pub struct CellEventResult {
+    /// Simulation run number
+    run: u32,
+
+    /// Time of the event, in seconds from the start of the simulation
+    time: FloatingPoint,
+
+    /// Call init number, in order of initiation
+    call_number: u32,
+
+    /// Event type
+    ty: CellEventType,
+
+    direction: VehicleDirection,
+
+    /// Vehicle speed
+    speed: FloatingPoint,
+
+    /// Base station involved in the event
+    #[serde(serialize_with = "serialize_base_station")]
+    station: BaseStation,
 }
 
 /// Inner event type
-#[derive(Clone, Debug)]
-enum EventType {
+#[derive(Clone, Debug, Serialize)]
+pub enum CellEventType {
     /// A call is initiated by a customer
-    InitiateCall {},
+    InitiateCall,
 
     /// A call is terminated by a customer
     TerminateCall,
@@ -40,7 +67,7 @@ enum EventType {
 }
 
 /// Vehicle movement direction
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub enum VehicleDirection {
     /// The vehicle is moving from left to right, and encounters base stations in
     /// ascending order.
@@ -57,6 +84,7 @@ pub enum VehicleDirection {
 /// Why use this instead of just a number?
 /// Type safety boi
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[repr(usize)]
 pub enum BaseStation {
     One = 0,
     Two = 1,
@@ -80,9 +108,17 @@ pub enum BaseStation {
     Twenty = 19,
 }
 
+fn serialize_base_station<S>(station: &BaseStation, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let station = *station as usize;
+    serializer.serialize_u32(station as u32 + 1)
+}
+
 /// Position of vehicle relative to the base station
 #[derive(Clone, Debug)]
-pub enum StationPosition {
+pub enum RelativeVehiclePosition {
     /// Vehicle is at the western end of the station's coverage
     /// area.
     WestEnd,
@@ -91,24 +127,24 @@ pub enum StationPosition {
     EastEnd,
 
     /// Vehicle is somewhere along the station's coverage area, measured from
-    /// the west.
-    Other(f64),
+    /// west to east, in meters.
+    Other(FloatingPoint),
 }
 
-impl PartialEq for Event {
+impl PartialEq for CellEvent {
     fn eq(&self, other: &Self) -> bool {
         self.time == other.time
     }
 }
 
-impl PartialOrd for Event {
+impl PartialOrd for CellEvent {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         self.time.partial_cmp(&other.time)
     }
 }
-impl Eq for Event {}
+impl Eq for CellEvent {}
 
-impl Ord for Event {
+impl Ord for CellEvent {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.time.total_cmp(&other.time)
     }
@@ -120,7 +156,7 @@ mod tests {
 
     #[test]
     fn test_sort_floats() {
-        let mut x: Vec<Event> = Default::default();
+        let mut x: Vec<CellEvent> = Default::default();
         x.sort();
     }
 }

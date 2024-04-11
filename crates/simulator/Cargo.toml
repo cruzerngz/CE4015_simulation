@@ -6,4 +6,10 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+simulator_core = { path = "../simulator_core" }
+
+probability = { workspace = true }
 serde = { workspace = true }
+
+clap = { version = "4", features = ["derive"] }
+rand = "0"

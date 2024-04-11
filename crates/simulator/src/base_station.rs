@@ -5,8 +5,11 @@
 ///
 /// Each base station has a fixed number of available channels.
 #[derive(Clone, Debug)]
-pub struct BaseStation<const CHANNELS: usize> {
-    /// Available channels to be used
+pub struct BaseStation {
+    /// Total number of channels available
+    channels: usize,
+
+    /// Available channels
     available_channels: usize,
 
     /// Channels reserved for handover requests
@@ -45,7 +48,15 @@ pub enum StationConnection {
     Handover,
 }
 
-/// Possible errors returned
+/// The various types of termination requests a station can accept.
+#[derive(Clone, Debug)]
+pub enum StationTermination {
+    ByUser,
+    Handover,
+    ByStation,
+}
+
+/// Possible errors returned from making a station request.
 #[derive(Clone, Debug)]
 pub enum RequestError {
     /// Unsuccessful new requests are blocked
@@ -54,18 +65,47 @@ pub enum RequestError {
     Terminated,
 }
 
-impl<const CHANNELS: usize> Default for BaseStation<CHANNELS> {
+impl Default for BaseStation {
     fn default() -> Self {
         Self {
-            available_channels: CHANNELS,
-            reserved_handover_channels: todo!(),
-            reserved_new_channels: todo!(),
+            channels: 0,
+            available_channels: 0,
+            reserved_handover_channels: None,
+            reserved_new_channels: None,
         }
     }
 }
 
-impl<const CHANNELS: usize> BaseStation<CHANNELS> {
-    /// Process a request with no channel reservation
+impl BaseStation {
+    /// Create a new instance of a base station with channel reservations.
+    pub fn new(reserved_handover: Option<usize>, reserved_new: Option<usize>) -> Result<Self, ()> {
+        let reserved_sum = reserved_handover.unwrap_or(0) + reserved_new.unwrap_or(0);
+
+        if reserved_sum > 0 {
+            return Err(());
+        }
+
+        Ok(Self {
+            channels: 0,
+            available_channels: 0,
+            reserved_handover_channels: match reserved_handover {
+                Some(num_reserved) => Some(ChannelAllocation {
+                    available: num_reserved,
+                    used: 0,
+                }),
+                None => None,
+            },
+            reserved_new_channels: match reserved_new {
+                Some(num_reserved) => Some(ChannelAllocation {
+                    available: num_reserved,
+                    used: 0,
+                }),
+                None => None,
+            },
+        })
+    }
+
+    /// Process an incoming request.
     pub fn process_request(&mut self, req: StationRequest) -> Result<(), RequestError> {
         match (self.available_channels, req) {
             (0, StationRequest::Connect(StationConnection::New)) => Err(RequestError::Blocked),
@@ -75,18 +115,16 @@ impl<const CHANNELS: usize> BaseStation<CHANNELS> {
 
             (num, StationRequest::Connect(ty)) => Ok(()),
 
-            _ => todo!(), // (0, StationRequest::Connect) => Err(RequestError::Blocked),
-                          // (0, StationRequest::Handover) => Err(RequestError::Terminated),
-
-                          // (_, StationRequest::Connect | StationRequest::Handover) => {
-                          //     self.available_channels -= 1;
-                          //     Ok(())
-                          // }
-
-                          // (_, StationRequest::Terminate) => {
-                          //     self.available_channels += 1;
-                          //     Ok(())
-                          // }
+            (num, StationRequest::Terminate(ty)) => Ok(()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    #[test]
+    fn test_base_station_processing() {
+        panic!("NOT IMPLEEEMENTUD")
     }
 }

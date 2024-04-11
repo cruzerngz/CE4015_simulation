@@ -4,7 +4,7 @@ use std::io;
 
 pub trait EventLike {
     type SharedResources: Default;
-    type EventStats: Default;
+    type EventStats;
 
     /// Step through one event in the simulation.
     fn step(&mut self, shared: &mut Self::SharedResources) -> Option<Vec<Self::EventStats>>;
