@@ -4,12 +4,12 @@ pub struct CliArgs {
     /// Number of simulation runs to perform
     #[clap(long)]
     #[clap(default_value_t = 100)]
-    pub runs: u32,
+    pub num_runs: u32,
 
     /// Number of call inititation events to generate per simulation run
     #[clap(long)]
     #[clap(default_value_t = 10_000)]
-    pub events: u32,
+    pub num_events: u32,
 
     /// The number of channels reserved for handover requests
     #[clap(short, long)]
@@ -20,10 +20,15 @@ pub struct CliArgs {
     #[clap(long)]
     pub antithetic: bool,
 
-    /// Output file for the simulation results
+    /// Output file for completed events in the simulation
     #[clap(long)]
-    #[clap(default_value = concat!(env!("CARGO_BIN_NAME"), "_out", ".csv"))]
-    pub output: String,
+    #[clap(default_value = concat!(env!("CARGO_BIN_NAME"), "_events", ".csv"))]
+    pub event_log_output: String,
+
+    /// Output file for performance measures in the simulation
+    #[clap(long)]
+    #[clap(default_value = concat!(env!("CARGO_BIN_NAME"), "_perf", ".csv"))]
+    pub perf_measure_output: String,
 
     /// Generate a given number of call initiation events, without running the simulation.
     ///

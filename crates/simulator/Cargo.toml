@@ -10,7 +10,7 @@ simulator_core = { path = "../simulator_core" }
 
 probability = { workspace = true }
 serde = { workspace = true }
+csv = { workspace = true }
 
 clap = { version = "4", features = ["derive"] }
 rand = "0"
-csv = "1"

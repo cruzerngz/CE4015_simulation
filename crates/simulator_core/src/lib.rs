@@ -8,9 +8,13 @@ use std::{
 pub trait EventLike {
     type SharedResources: Default;
     type EventStats;
+    type PerformanceMeasure;
 
     /// Step through one event in the simulation.
     fn step(&mut self, shared: &mut Self::SharedResources) -> Option<Vec<Self::EventStats>>;
+
+    /// From the results of the simulation, calculate a performance measure.
+    fn calculate_performance_measure(results: &[Self::EventStats]) -> Self::PerformanceMeasure;
 }
 
 /// Runner for event-based simulations
@@ -25,6 +29,7 @@ where
 
     /// The results of the simulation
     results: Vec<P::EventStats>,
+    // perf_measure: Option<P::PerformanceMeasure>,
 }
 
 impl<P> EventRunner<P>
@@ -37,6 +42,7 @@ where
             inner: logic,
             globals: resources.unwrap_or_default(),
             results: Vec::new(),
+            // perf_measure: None,
         }
     }
 
@@ -44,6 +50,13 @@ where
         while let Some(stats) = self.inner.step(&mut self.globals) {
             self.results.extend(stats);
         }
+
+        // self.perf_measure = Some(P::calculate_performance_measure(&self.results));
+    }
+
+    /// Returns the performance measure for the simulation run.
+    pub fn performance_measure(&mut self) -> P::PerformanceMeasure {
+        P::calculate_performance_measure(&self.results)
     }
 
     /// Write the results of the simulation as csv to a file.
@@ -81,7 +94,7 @@ where
         file.write_all(
             &writer
                 .into_inner()
-                .expect("failed to extract inner buffer from csv writer"),
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?,
         )?;
 
         Ok(())

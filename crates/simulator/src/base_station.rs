@@ -1,6 +1,8 @@
 //! Code for the base station.
 //!
 
+use serde::Serialize;
+
 /// The base station that handles calls.
 ///
 /// Each base station has a fixed number of available channels.
@@ -13,55 +15,59 @@ pub struct BaseStation {
     pub available_channels: usize,
 
     /// Channels reserved for handover requests
-    pub reserved_handover_channels: Option<ChannelAllocation>,
-
-    /// Channels reserved for new requestss
-    pub reserved_new_channels: Option<ChannelAllocation>,
+    pub reserved_handover_channels: Option<usize>,
+    // / Channels reserved for new requestss
+    // pub reserved_new_channels: Option<ChannelAllocation>,
 }
 
-/// A request made to a base station.
-///
-/// A handover request is pretty much the same as a connect request.
-///
-/// It is a termination request for one station immediately followed by a
-/// connection request at the next station.
+// /// Channels available and used.
+// ///
+// /// This is used when the station enables channel reservation.
+// #[derive(Clone, Debug)]
+// pub struct ChannelAllocation {
+//     available: usize,
+//     used: usize,
+// }
+
+// /// The base station keeps track of which type of connections
+// /// are being serviced.
+// #[derive(Clone, Debug)]
+// pub enum StationConnection {
+//     New,
+//     Handover,
+// }
+
+// /// The various types of termination requests a station can accept.
+// #[derive(Clone, Debug)]
+// pub enum StationTermination {
+//     ByUser,
+//     Handover,
+//     ByStation,
+// }
+
+// /// Possible errors returned from making a station request.
+// #[derive(Clone, Debug)]
+// pub enum RequestError {
+//     /// Unsuccessful new requests are blocked
+//     Blocked,
+//     /// Unsuccessful handover requests are terminated
+//     Terminated,
+// }
+
+/// Station request
 #[derive(Clone, Debug)]
 pub enum StationRequest {
-    Connect(StationConnection),
-    Terminate(StationConnection),
+    Initiate,
+    Terminate,
+    HandoverDisconnect,
+    HandoverConnect,
 }
 
-/// Channels available and used.
-///
-/// This is used when the station enables channel reservation.
-#[derive(Clone, Debug)]
-pub struct ChannelAllocation {
-    available: usize,
-    used: usize,
-}
-
-/// The base station keeps track of which type of connections
-/// are being serviced.
-#[derive(Clone, Debug)]
-pub enum StationConnection {
-    New,
-    Handover,
-}
-
-/// The various types of termination requests a station can accept.
-#[derive(Clone, Debug)]
-pub enum StationTermination {
-    ByUser,
-    Handover,
-    ByStation,
-}
-
-/// Possible errors returned from making a station request.
-#[derive(Clone, Debug)]
-pub enum RequestError {
-    /// Unsuccessful new requests are blocked
+/// Channel allocation response by station
+#[derive(Clone, Copy, Debug, Serialize)]
+pub enum StationResponse {
+    Success,
     Blocked,
-    /// Unsuccessful handover requests are terminated
     Terminated,
 }
 
@@ -71,51 +77,57 @@ impl Default for BaseStation {
             channels: 0,
             available_channels: 0,
             reserved_handover_channels: None,
-            reserved_new_channels: None,
+            // reserved_new_channels: None,
         }
     }
 }
 
 impl BaseStation {
     /// Create a new instance of a base station with channel reservations.
-    pub fn new(reserved_handover: Option<usize>, reserved_new: Option<usize>) -> Result<Self, ()> {
-        let reserved_sum = reserved_handover.unwrap_or(0) + reserved_new.unwrap_or(0);
-
-        if reserved_sum > 0 {
-            return Err(());
+    pub fn new(channels: usize, reserved_handover: Option<usize>) -> Self {
+        Self {
+            channels,
+            available_channels: channels,
+            reserved_handover_channels: reserved_handover,
         }
-
-        Ok(Self {
-            channels: 0,
-            available_channels: 0,
-            reserved_handover_channels: match reserved_handover {
-                Some(num_reserved) => Some(ChannelAllocation {
-                    available: num_reserved,
-                    used: 0,
-                }),
-                None => None,
-            },
-            reserved_new_channels: match reserved_new {
-                Some(num_reserved) => Some(ChannelAllocation {
-                    available: num_reserved,
-                    used: 0,
-                }),
-                None => None,
-            },
-        })
     }
 
     /// Process an incoming request.
-    pub fn process_request(&mut self, req: StationRequest) -> Result<(), RequestError> {
-        match (self.available_channels, req) {
-            (0, StationRequest::Connect(StationConnection::New)) => Err(RequestError::Blocked),
-            (0, StationRequest::Connect(StationConnection::Handover)) => {
-                Err(RequestError::Terminated)
+    pub fn process_request(&mut self, req: StationRequest) -> StationResponse {
+        match req {
+            StationRequest::Initiate => match self.reserved_handover_channels {
+                Some(reserved) => {
+                    if self.available_channels <= reserved {
+                        StationResponse::Blocked
+                    } else {
+                        self.available_channels -= 1;
+                        StationResponse::Success
+                    }
+                }
+                None => {
+                    if self.available_channels > 0 {
+                        self.available_channels -= 1;
+                        StationResponse::Success
+                    } else {
+                        StationResponse::Blocked
+                    }
+                }
+            },
+
+            StationRequest::Terminate | StationRequest::HandoverDisconnect => {
+                self.available_channels += 1;
+                assert!(self.available_channels <= self.channels);
+                StationResponse::Success
             }
 
-            (num, StationRequest::Connect(ty)) => Ok(()),
-
-            (num, StationRequest::Terminate(ty)) => Ok(()),
+            StationRequest::HandoverConnect => {
+                if self.available_channels > 0 {
+                    self.available_channels -= 1;
+                    StationResponse::Success
+                } else {
+                    StationResponse::Terminated
+                }
+            }
         }
     }
 }
@@ -123,8 +135,44 @@ impl BaseStation {
 #[cfg(test)]
 mod tests {
 
+    use super::*;
+
+    /// Test base station logic
     #[test]
     fn test_base_station_processing() {
-        panic!("NOT IMPLEEEMENTUD")
+        let mut base_station = BaseStation::new(10, Some(1));
+
+        for _ in 0..9 {
+            let res = base_station.process_request(StationRequest::Initiate);
+            assert!(matches!(res, StationResponse::Success));
+        }
+
+        let init_into_reserve = base_station.process_request(StationRequest::Initiate);
+        println!(
+            "initiate call with 1 reserved slot:   {:?}",
+            init_into_reserve
+        );
+        assert!(matches!(init_into_reserve, StationResponse::Blocked));
+
+        let handover_from_other_station =
+            base_station.process_request(StationRequest::HandoverConnect);
+        assert!(matches!(
+            handover_from_other_station,
+            StationResponse::Success
+        ));
+
+        let station_full = base_station.process_request(StationRequest::Initiate);
+        assert!(matches!(station_full, StationResponse::Blocked));
+
+        let station_full = base_station.process_request(StationRequest::HandoverConnect);
+        assert!(matches!(station_full, StationResponse::Terminated));
+
+        let terminate = base_station.process_request(StationRequest::Terminate);
+        assert!(matches!(terminate, StationResponse::Success));
+
+        for _ in 0..9 {
+            let res = base_station.process_request(StationRequest::Terminate);
+            assert!(matches!(res, StationResponse::Success));
+        }
     }
 }

@@ -1,6 +1,5 @@
 //! Random variable generators, their parameters and other sampling stuff are defined here.
 
-
 use std::path::Iter;
 
 use probability::{
@@ -43,6 +42,8 @@ where
     source: S,
 
     time: f64,
+
+    count: usize,
 
     // expon dist
     call_duration: SingleVariateIterator<distribution::Exponential, S>,
@@ -160,6 +161,59 @@ where
     }
 }
 
+fn cell_event_from_random_variables(
+    idx: usize,
+    call_dur: f64,
+    // need to add with previous time
+    arr_time: f64,
+    cell_tower: f64,
+    vehicle_velocity: f64,
+    vehicle_position: f64,
+    vehicle_direction: f64,
+) -> CellEvent {
+    let dir = match vehicle_direction > 0.5 {
+        true => VehicleDirection::WestToEast,
+        false => VehicleDirection::EastToWest,
+    };
+
+    // time to next station calculation
+    let dur_to_next = match dir {
+        VehicleDirection::WestToEast => {
+            let remaining = VEHICLE_LOC_DIST.1 - vehicle_position;
+            let time = remaining / (vehicle_velocity / 3.6); // convert to m/s
+            time
+        }
+        VehicleDirection::EastToWest => {
+            let remaining = vehicle_position;
+            let time = remaining / (vehicle_velocity / 3.6); // convert to m/s
+            time
+        }
+    };
+
+    // validate if the call will end at the current station
+    let ttn = match dur_to_next < call_dur {
+        true => Some(dur_to_next as f32),
+        false => None,
+    };
+
+    CellEvent {
+        idx,
+        time: arr_time as f32,
+        ty: CellEventType::InitiateCall,
+        remaining_time: call_dur as f32,
+        ttn,
+        velocity: vehicle_velocity as f32,
+        direction: dir,
+        station: {
+            let station_idx = (cell_tower % 20.0).floor() as usize;
+            let station: BaseStation = unsafe { std::mem::transmute(station_idx) };
+
+            station
+        },
+        position: RelativeVehiclePosition::Other(vehicle_position as f32),
+    }
+}
+
 impl<S> Iterator for CallEventGenerator<S>
 where
     S: Source + Clone,
@@ -174,47 +228,20 @@ where
         let vehicle_position = self.vehicle_position.clone().take(1).last()?;
         let vehicle_direction = self.vehicle_direction.clone().take(1).last()?;
 
+        self.count += 1;
         self.time += inter_arr;
-        let dir = match vehicle_direction > 0.5 {
-            true => VehicleDirection::WestToEast,
-            false => VehicleDirection::EastToWest,
-        };
 
-        // time to next station calculation
-        let dur_to_next = match dir {
-            VehicleDirection::WestToEast => {
-                let remaining = VEHICLE_LOC_DIST.1 - vehicle_position;
-                let time = remaining / (vehicle_velocity / 3.6); // convert to m/s
-                time
-            }
-            VehicleDirection::EastToWest => {
-                let remaining = vehicle_position;
-                let time = remaining / (vehicle_velocity / 3.6); // convert to m/s
-                time
-            }
-        };
+        let ev = cell_event_from_random_variables(
+            self.count,
+            call_dur,
+            self.time,
+            cell_tower,
+            vehicle_velocity,
+            vehicle_position,
+            vehicle_direction,
+        );
 
-        // validate if the call will end at the current station
-        let ttn = match dur_to_next < call_dur {
-            true => Some(dur_to_next as f32),
-            false => None,
-        };
-
-        Some(CellEvent {
-            time: self.time as f32,
-            ty: CellEventType::InitiateCall,
-            remaining_time: call_dur as f32,
-            ttn,
-            velocity: vehicle_velocity as f32,
-            direction: dir,
-            station: {
-                let station_idx = (cell_tower % 20.0).floor() as usize;
-                let station: BaseStation = unsafe { std::mem::transmute(station_idx) };
-
-                station
-            },
-            position: RelativeVehiclePosition::Other(vehicle_position as f32),
-        })
+        Some(ev)
     }
 }
 
@@ -272,6 +299,7 @@ where
         vehicle_direction: Option<distribution::Uniform>,
     ) -> Self {
         Self {
+            count: 0,
             source: source.clone(),
             time: 0.0,
             call_duration: SingleVariateIterator::new(

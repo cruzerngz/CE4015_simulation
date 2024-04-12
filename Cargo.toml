@@ -6,3 +6,8 @@ members = ["crates/*"]
 [workspace.dependencies]
 serde = { version = "1.0", features = ["derive"] }
 probability = "0"
+csv = "1"
+
+[profile.release]
+lto = true
+strip = "debuginfo"

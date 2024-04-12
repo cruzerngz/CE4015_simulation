@@ -1,6 +1,13 @@
 //! Event definition for the simulator
 
+use std::{
+    iter::once_with,
+    ops::{Add, Div},
+};
+
 use serde::Serialize;
+
+use crate::base_station::StationResponse;
 
 /// Common float type for the simulator
 type FloatingPoint = f32;
@@ -8,6 +15,9 @@ type FloatingPoint = f32;
 /// A discrete event in the simulator
 #[derive(Clone, Debug, Serialize)]
 pub struct CellEvent {
+    /// Event index
+    pub idx: usize,
+
     /// Time of event
     pub time: FloatingPoint,
 
@@ -40,6 +50,9 @@ pub struct CellEvent {
 /// Result of an event
 #[derive(Debug, Serialize)]
 pub struct CellEventResult {
+
+    idx: usize,
+
     /// Simulation run number
     run: u32,
 
@@ -56,7 +69,7 @@ pub struct CellEventResult {
     ///
     /// For unsuccessful call initiations, the call is blocked.
     /// For unsuccessful call handovers, the call is dropped.
-    success: bool,
+    outcome: StationResponse,
 
     direction: VehicleDirection,
 
@@ -66,6 +79,16 @@ pub struct CellEventResult {
     /// Base station involved in the event
     #[serde(serialize_with = "serialize_base_station")]
     station: BaseStation,
+}
+
+/// Performance measure for sim
+#[derive(Debug, Serialize)]
+pub struct PerfMeasure {
+    /// Percentage of blocked calls
+    blocked_calls: FloatingPoint,
+
+    /// Percentage of dropped calls
+    dropped_cals: FloatingPoint,
 }
 
 /// Inner event type
@@ -148,13 +171,19 @@ pub enum RelativeVehiclePosition {
 
 impl PartialEq for CellEvent {
     fn eq(&self, other: &Self) -> bool {
+        // match (self.ttn, other.ttn) {
+        //     (Some(ttn1), Some(ttn2)) => ttn1 == ttn2,
+        //     (None, None) => true,
+        //     _ => false,
+        // };
+
         self.time == other.time
     }
 }
 
 impl PartialOrd for CellEvent {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.time.partial_cmp(&other.time)
+        Some(self.time.total_cmp(&other.time))
     }
 }
 impl Eq for CellEvent {}
@@ -162,6 +191,28 @@ impl Eq for CellEvent {}
 impl Ord for CellEvent {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.time.total_cmp(&other.time)
+    }
+}
+
+impl Add<PerfMeasure> for PerfMeasure {
+    type Output = PerfMeasure;
+
+    fn add(self, rhs: PerfMeasure) -> Self::Output {
+        Self {
+            blocked_calls: self.blocked_calls + rhs.blocked_calls,
+            dropped_cals: self.dropped_cals + rhs.dropped_cals,
+        }
+    }
+}
+
+impl Div<f64> for PerfMeasure {
+    type Output = PerfMeasure;
+
+    fn div(self, rhs: f64) -> Self::Output {
+        Self {
+            blocked_calls: self.blocked_calls / rhs as FloatingPoint,
+            dropped_cals: self.dropped_cals / rhs as FloatingPoint,
+        }
     }
 }
 

@@ -7,5 +7,4 @@ edition = "2021"
 
 [dependencies]
 serde = { workspace = true }
-
-csv = "1"
+csv = { workspace = true }

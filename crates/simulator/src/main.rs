@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 mod args;
 mod base_station;
 mod event;
@@ -5,11 +7,12 @@ mod generator;
 mod logic;
 
 use clap::Parser;
+use event::PerfMeasure;
 use logic::{EventProcessor, Shared};
 use probability::prelude::*;
 use probability::source::Source;
 use simulator_core::EventRunner;
-use std::io;
+use std::{fs, io};
 
 use crate::generator::CallEventGenerator;
 
@@ -44,7 +47,10 @@ fn main() -> io::Result<()> {
     }
 
     let shared_resources = Shared::new(args.reserved_handover_channels as usize);
-    for iteration in 0..args.runs {
+    let mut perf_measures: Vec<PerfMeasure> = Vec::new();
+
+    for iteration in 0..args.num_runs as usize {
+        // new generator for each iteration
         let generator = CallEventGenerator::new(
             RngSource(rand::rngs::ThreadRng::default()),
             None,
@@ -56,43 +62,55 @@ fn main() -> io::Result<()> {
 
         match args.antithetic {
             true => {
-                let (events_a, events_b): (Vec<_>, Vec<_>) =
-                    generator.antithetic().take(100).unzip();
+                let (events_a, events_b): (Vec<_>, Vec<_>) = generator
+                    .antithetic()
+                    .take(args.num_events as usize)
+                    .unzip();
 
-                let sim_a = EventProcessor::new(events_a);
-                let sim_b = EventProcessor::new(events_b);
+                let sim_a = EventProcessor::new(iteration + 1, events_a);
+                let sim_b = EventProcessor::new(iteration + 1, events_b);
 
                 let mut run_a = EventRunner::init(sim_a, Some(shared_resources.clone()));
                 let mut run_b = EventRunner::init(sim_b, Some(shared_resources.clone()));
 
                 run_a.run();
                 run_b.run();
+                let avg_perf_measure =
+                    (run_a.performance_measure() + run_b.performance_measure()) / 2.0;
+
+                perf_measures.push(avg_perf_measure);
 
                 if iteration == 0 {
-                    run_a.write_to_file(&args.output, false)?;
+                    run_a.write_to_file(&args.event_log_output, false)?;
                 } else {
-                    run_a.write_to_file(&args.output, true)?;
+                    run_a.write_to_file(&args.event_log_output, true)?;
                 }
 
-                run_b.write_to_file(&args.output, true)?;
+                run_b.write_to_file(&args.event_log_output, true)?;
             }
             false => {
-                let gen_events = generator.take(100).collect::<Vec<_>>();
+                let gen_events = generator.take(args.num_events as usize).collect::<Vec<_>>();
 
-                let sim = EventProcessor::new(gen_events);
+                let sim = EventProcessor::new(iteration + 1, gen_events);
                 let mut run = EventRunner::init(sim, Some(shared_resources.clone()));
 
                 run.run();
+                perf_measures.push(run.performance_measure());
 
                 match iteration == 0 {
-                    true => run.write_to_file(&args.output, false)?,
-                    false => run.write_to_file(&args.output, true)?,
+                    true => run.write_to_file(&args.event_log_output, false)?,
+                    false => run.write_to_file(&args.event_log_output, true)?,
                 }
             }
         }
-
-        // let logic = EventProcessor::new(events)
     }
+
+    let mut writer = csv::Writer::from_path(&args.perf_measure_output)?;
+    for perf in perf_measures {
+        writer.serialize(perf)?;
+    }
+
+    writer.flush()?;
 
     Ok(())
 }
@@ -108,6 +126,7 @@ where
     let mut writer = csv::Writer::from_path(file)?;
 
     for ev in event_gen.take(num_gen as usize) {
+        println!("event time: {}", ev.time);
         writer.serialize(ev)?;
     }
 
