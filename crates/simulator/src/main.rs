@@ -1,26 +1,3 @@
-#![allow(unused)]
-
-// use traits::{EventLike, Process, SimExecutor, ToEventIterator};
-// mod traits;
-
-// #[derive(Clone, Copy)]
-// struct TrainSimulation;
-
-// impl EventLike for TrainSimulation {
-//     fn next_event(&mut self) -> traits::SimStatus {
-//         traits::SimStatus::Continue
-//     }
-// }
-
-// fn main() {
-//     let sim = TrainSimulation;
-
-//     let mut runner: SimExecutor<Process, traits::EventIterator<TrainSimulation>> =
-//         SimExecutor::from_iterator(sim.to_event_iter());
-
-//     runner.execute();
-// }
-
 mod args;
 mod base_station;
 mod event;
@@ -28,10 +5,10 @@ mod generator;
 mod logic;
 
 use clap::Parser;
-use core::num;
-use probability::distribution::Sample;
+use logic::{EventProcessor, Shared};
 use probability::prelude::*;
 use probability::source::Source;
+use simulator_core::EventRunner;
 use std::io;
 
 use crate::generator::CallEventGenerator;
@@ -49,73 +26,85 @@ impl<T: rand::RngCore> source::Source for RngSource<T> {
 fn main() -> io::Result<()> {
     let args = args::CliArgs::parse();
 
-    let generator = CallEventGenerator::new(
-        RngSource(rand::rngs::ThreadRng::default()),
-        None,
-        None,
-        None,
-        None,
-        None,
-    );
-
     match args.generate {
         Some(num_gen) => {
+            let generator = CallEventGenerator::new(
+                RngSource(rand::rngs::ThreadRng::default()),
+                None,
+                None,
+                None,
+                None,
+                None,
+            );
+
             generate_num_to_file(generator, num_gen, &args.generate_to)?;
+            return Ok(());
         }
-        None => todo!(),
+        None => (),
     }
 
-    let dist = probability::distribution::Uniform::new(0.0, 1.0);
+    let shared_resources = Shared::new(args.reserved_handover_channels as usize);
+    for iteration in 0..args.runs {
+        let generator = CallEventGenerator::new(
+            RngSource(rand::rngs::ThreadRng::default()),
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
 
-    let mut source = probability::source::default(0);
+        match args.antithetic {
+            true => {
+                let (events_a, events_b): (Vec<_>, Vec<_>) =
+                    generator.antithetic().take(100).unzip();
 
-    let mut total: f64 = 0.0;
+                let sim_a = EventProcessor::new(events_a);
+                let sim_b = EventProcessor::new(events_b);
 
-    for _ in 0..1000 {
-        let sample = dist.sample(&mut source);
-        total += sample;
+                let mut run_a = EventRunner::init(sim_a, Some(shared_resources.clone()));
+                let mut run_b = EventRunner::init(sim_b, Some(shared_resources.clone()));
+
+                run_a.run();
+                run_b.run();
+
+                if iteration == 0 {
+                    run_a.write_to_file(&args.output, false)?;
+                } else {
+                    run_a.write_to_file(&args.output, true)?;
+                }
+
+                run_b.write_to_file(&args.output, true)?;
+            }
+            false => {
+                let gen_events = generator.take(100).collect::<Vec<_>>();
+
+                let sim = EventProcessor::new(gen_events);
+                let mut run = EventRunner::init(sim, Some(shared_resources.clone()));
+
+                run.run();
+
+                match iteration == 0 {
+                    true => run.write_to_file(&args.output, false)?,
+                    false => run.write_to_file(&args.output, true)?,
+                }
+            }
+        }
+
+        // let logic = EventProcessor::new(events)
     }
-
-    println!("average: {}", total / 1000.0);
-
-    let mut source = source::default(42);
-    let distribution = Uniform::new(0.0, 1.0);
-    let sampler = Independent(&distribution, &mut source);
-
-    // distribution.sample();
-    distribution.distribution(0.0);
-    // distribution.inverse(p)
-
-    let samples = sampler.take(10).collect::<Vec<_>>();
-
-    let mut total = 0.0;
-
-    for _ in 0..100 {
-        let val = source.read::<f64>();
-        println!("val: {}", val);
-        // let sampled = distribution.sample(val);
-        // println!("sampled: {}", sampled);
-        // total += sampled;
-    }
-
-    println!("avg: {}", total / 100.0);
-
-    // probability::distribution::Discrete
-    // let x = probability::distribution::Gaussian::new(mu, sigma)
 
     Ok(())
 }
 
 fn generate_num_to_file<S>(
-    mut event_gen: CallEventGenerator<S>,
+    event_gen: CallEventGenerator<S>,
     num_gen: u32,
     file: &str,
 ) -> io::Result<()>
 where
     S: Source + Clone,
 {
-    let mut source = probability::source::default(0);
-
     let mut writer = csv::Writer::from_path(file)?;
 
     for ev in event_gen.take(num_gen as usize) {

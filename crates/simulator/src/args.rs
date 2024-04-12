@@ -6,6 +6,11 @@ pub struct CliArgs {
     #[clap(default_value_t = 100)]
     pub runs: u32,
 
+    /// Number of call inititation events to generate per simulation run
+    #[clap(long)]
+    #[clap(default_value_t = 10_000)]
+    pub events: u32,
+
     /// The number of channels reserved for handover requests
     #[clap(short, long)]
     #[clap(default_value_t = 0)]
@@ -14,6 +19,11 @@ pub struct CliArgs {
     /// Run the simulation in antithetic pairs
     #[clap(long)]
     pub antithetic: bool,
+
+    /// Output file for the simulation results
+    #[clap(long)]
+    #[clap(default_value = concat!(env!("CARGO_BIN_NAME"), "_out", ".csv"))]
+    pub output: String,
 
     /// Generate a given number of call initiation events, without running the simulation.
     ///

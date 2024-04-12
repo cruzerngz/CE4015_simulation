@@ -1,4 +1,5 @@
-//! Random variable generators for various parts of the sim
+//! Random variable generators, their parameters and other sampling stuff are defined here.
+
 
 use std::path::Iter;
 
@@ -112,7 +113,6 @@ where
 
 impl<'s, S> AntitheticSampler<'s, S>
 where
-    // D: Sample + Inverse,
     S: Source,
 {
     pub fn new(source: &'s mut S) -> Self {

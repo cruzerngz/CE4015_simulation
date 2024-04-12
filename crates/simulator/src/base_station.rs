@@ -7,16 +7,16 @@
 #[derive(Clone, Debug)]
 pub struct BaseStation {
     /// Total number of channels available
-    channels: usize,
+    pub channels: usize,
 
     /// Available channels
-    available_channels: usize,
+    pub available_channels: usize,
 
     /// Channels reserved for handover requests
-    reserved_handover_channels: Option<ChannelAllocation>,
+    pub reserved_handover_channels: Option<ChannelAllocation>,
 
     /// Channels reserved for new requestss
-    reserved_new_channels: Option<ChannelAllocation>,
+    pub reserved_new_channels: Option<ChannelAllocation>,
 }
 
 /// A request made to a base station.

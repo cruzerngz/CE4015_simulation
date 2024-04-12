@@ -1,6 +1,9 @@
 //! Core functionality for running simulations.
 
-use std::io;
+use std::{
+    fs,
+    io::{self, Write},
+};
 
 pub trait EventLike {
     type SharedResources: Default;
@@ -44,17 +47,44 @@ where
     }
 
     /// Write the results of the simulation as csv to a file.
-    pub fn write_to_file(&self, path: &str) -> io::Result<()>
+    ///
+    /// If set to append, headerless data is written to a file.
+    pub fn write_to_file(&self, path: &str, append: bool) -> io::Result<()>
     where
         P::EventStats: serde::Serialize,
     {
-        let mut writer = csv::Writer::from_path(path)?;
+        let mut writer = csv::WriterBuilder::new()
+            .has_headers(!append)
+            .from_writer(vec![]);
 
         for record in &self.results {
             writer.serialize(record)?;
         }
 
-        writer.flush()
+        writer.flush()?;
+
+        let mut file = match append {
+            // if appending, write to vec first
+            true => fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)?,
+
+            // if not appending, write to file directly
+            false => fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .open(path)?,
+        };
+
+        file.write_all(
+            &writer
+                .into_inner()
+                .expect("failed to extract inner buffer from csv writer"),
+        )?;
+
+        Ok(())
     }
 }
 
