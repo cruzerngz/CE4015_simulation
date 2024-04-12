@@ -12,6 +12,17 @@ pub struct CliArgs {
     pub reserved_handover_channels: u8,
 
     /// Run the simulation in antithetic pairs
+    #[clap(long)]
     pub antithetic: bool,
 
+    /// Generate a given number of call initiation events, without running the simulation.
+    ///
+    /// Used for verifying input modelling correctness.
+    #[clap(long)]
+    pub generate: Option<u32>,
+
+    /// Generated call initiation events will be written to this file.
+    #[clap(long)]
+    #[clap(default_value = "call_init.csv")]
+    pub generate_to: String,
 }

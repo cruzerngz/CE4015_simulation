@@ -38,7 +38,6 @@ impl EventLike for EventProcessor {
     type EventStats = CellEventResult;
 
     fn step(&mut self, shared: &mut Self::SharedResources) -> Option<Vec<Self::EventStats>> {
-
         let next_event = self.fel.pop_front()?;
 
         match next_event.ty {

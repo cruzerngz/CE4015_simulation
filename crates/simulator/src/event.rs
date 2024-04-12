@@ -6,14 +6,22 @@ use serde::Serialize;
 type FloatingPoint = f32;
 
 /// A discrete event in the simulator
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct CellEvent {
     /// Time of event
     pub time: FloatingPoint,
+
     pub ty: CellEventType,
 
+    /// Remaining call duration.
+    ///
+    /// At call initiation, this will represent the total call duration.
+    pub remaining_time: FloatingPoint,
+
     /// Time to next base station.
-    pub ttn: FloatingPoint,
+    ///
+    /// If this is None, the call will end at the current base station.
+    pub ttn: Option<FloatingPoint>,
 
     /// Speed of vehicle,pub  km/h
     pub velocity: FloatingPoint,
@@ -22,6 +30,7 @@ pub struct CellEvent {
     pub direction: VehicleDirection,
 
     /// Station currently in range of vehicle
+    #[serde(serialize_with = "serialize_base_station")]
     pub station: BaseStation,
 
     /// Position of vehicle relative to station
@@ -42,6 +51,12 @@ pub struct CellEventResult {
 
     /// Event type
     ty: CellEventType,
+
+    /// Indicate if the event was successful.
+    ///
+    /// For unsuccessful call initiations, the call is blocked.
+    /// For unsuccessful call handovers, the call is dropped.
+    success: bool,
 
     direction: VehicleDirection,
 
@@ -117,7 +132,7 @@ where
 }
 
 /// Position of vehicle relative to the base station
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub enum RelativeVehiclePosition {
     /// Vehicle is at the western end of the station's coverage
     /// area.

@@ -27,17 +27,43 @@ mod event;
 mod generator;
 mod logic;
 
-use std::io;
-
 use clap::Parser;
+use core::num;
 use probability::distribution::Sample;
 use probability::prelude::*;
 use probability::source::Source;
+use std::io;
+
+use crate::generator::CallEventGenerator;
+
+/// Random number generator source
+#[derive(Clone)]
+struct RngSource<T>(T);
+
+impl<T: rand::RngCore> source::Source for RngSource<T> {
+    fn read_u64(&mut self) -> u64 {
+        self.0.next_u64()
+    }
+}
 
 fn main() -> io::Result<()> {
     let args = args::CliArgs::parse();
 
-    println!("hello sim world!");
+    let generator = CallEventGenerator::new(
+        RngSource(rand::rngs::ThreadRng::default()),
+        None,
+        None,
+        None,
+        None,
+        None,
+    );
+
+    match args.generate {
+        Some(num_gen) => {
+            generate_num_to_file(generator, num_gen, &args.generate_to)?;
+        }
+        None => todo!(),
+    }
 
     let dist = probability::distribution::Uniform::new(0.0, 1.0);
 
@@ -74,7 +100,29 @@ fn main() -> io::Result<()> {
 
     println!("avg: {}", total / 100.0);
 
+    // probability::distribution::Discrete
     // let x = probability::distribution::Gaussian::new(mu, sigma)
+
+    Ok(())
+}
+
+fn generate_num_to_file<S>(
+    mut event_gen: CallEventGenerator<S>,
+    num_gen: u32,
+    file: &str,
+) -> io::Result<()>
+where
+    S: Source + Clone,
+{
+    let mut source = probability::source::default(0);
+
+    let mut writer = csv::Writer::from_path(file)?;
+
+    for ev in event_gen.take(num_gen as usize) {
+        writer.serialize(ev)?;
+    }
+
+    writer.flush()?;
 
     Ok(())
 }
