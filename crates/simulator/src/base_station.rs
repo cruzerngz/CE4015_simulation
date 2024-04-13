@@ -6,7 +6,7 @@ use serde::Serialize;
 /// The base station that handles calls.
 ///
 /// Each base station has a fixed number of available channels.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct BaseStation {
     /// Total number of channels available
     pub channels: usize,
@@ -69,17 +69,6 @@ pub enum StationResponse {
     Success,
     Blocked,
     Terminated,
-}
-
-impl Default for BaseStation {
-    fn default() -> Self {
-        Self {
-            channels: 0,
-            available_channels: 0,
-            reserved_handover_channels: None,
-            // reserved_new_channels: None,
-        }
-    }
 }
 
 impl BaseStation {

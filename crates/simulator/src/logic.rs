@@ -6,7 +6,11 @@ use simulator_core::EventLike;
 
 use crate::{
     base_station::{BaseStation, StationRequest, StationResponse},
-    event::{CellEvent, CellEventResult, CellEventType, PerfMeasure},
+    event::{
+        BaseStationIdx, CellEvent, CellEventResult, CellEventType, PerfMeasure,
+        RelativeVehiclePosition, VehicleDirection,
+    },
+    generator::{calculate_ttn, VEHICLE_LOC_DIST},
 };
 
 /// Process events in the simulation
@@ -18,18 +22,10 @@ pub struct EventProcessor {
 }
 
 /// Shared resources in the simulation
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Shared {
     /// Base stations in the simulation
     base_stations: [BaseStation; 20],
-}
-
-impl Default for Shared {
-    fn default() -> Self {
-        Self {
-            base_stations: Default::default(),
-        }
-    }
 }
 
 impl EventLike for EventProcessor {
@@ -43,15 +39,13 @@ impl EventLike for EventProcessor {
         let next_event = self.fel.pop_front()?;
 
         let results = match next_event.ty {
-            crate::event::CellEventType::InitiateCall => {
+            crate::event::CellEventType::Initiate => {
                 self.process_call_initiation(next_event, shared)
             }
-            crate::event::CellEventType::TerminateCall => {
+            crate::event::CellEventType::Terminate => {
                 self.process_call_terminate(next_event, shared)
             }
-            crate::event::CellEventType::HandoverCall => {
-                self.process_call_handover(next_event, shared)
-            }
+            crate::event::CellEventType::Handover => self.process_call_handover(next_event, shared),
         };
 
         Some(results)
@@ -108,7 +102,7 @@ impl EventProcessor {
         event: CellEvent,
         shared: &mut Shared,
     ) -> Vec<CellEventResult> {
-        assert!(matches!(event.ty, CellEventType::InitiateCall));
+        assert!(matches!(event.ty, CellEventType::Initiate));
 
         // check shared resource
 
@@ -119,31 +113,114 @@ impl EventProcessor {
 
         let response = station.process_request(StationRequest::Initiate);
 
-        if let StationResponse::Success = response {
-        } else {
-            assert!(matches!(response, StationResponse::Blocked));
+        let ev_result = CellEventResult {
+            idx: event.idx,
+            run: event.run,
+            time: event.time,
+            ty: event.ty,
+            outcome: response,
+            direction: event.direction,
+            speed: event.velocity,
+            station: event.station,
+        };
+
+        let mut results = vec![ev_result];
+
+        if let StationResponse::Blocked = response {
+            return results;
         }
 
         match event.ttn {
             // enqueue handover/terminate call event
-            Some(time) => {}
+            Some(tt_next) => {
+                let remaining_call_time = event.remaining_time - tt_next;
+
+                // check for termination
+                // Time not correct
+                let next_ev = match (event.station, event.direction) {
+                    (BaseStationIdx::One, VehicleDirection::EastToWest)
+                    | (BaseStationIdx::Twenty, VehicleDirection::WestToEast) => CellEvent {
+                        idx: event.idx,
+                        run: event.run,
+                        time: event.time + tt_next,
+                        ty: CellEventType::Terminate,
+                        remaining_time: remaining_call_time,
+                        ttn: None,
+                        velocity: event.velocity,
+                        direction: event.direction,
+                        station: event.station,
+                        position: match event.direction {
+                            VehicleDirection::EastToWest => RelativeVehiclePosition::WestEnd,
+                            VehicleDirection::WestToEast => RelativeVehiclePosition::EastEnd,
+                        },
+                    },
+
+                    _ => CellEvent {
+                        idx: event.idx,
+                        run: event.run,
+                        time: event.time + tt_next,
+                        ty: CellEventType::Handover,
+                        remaining_time: remaining_call_time,
+                        ttn: calculate_ttn(
+                            remaining_call_time,
+                            0.0,
+                            event.velocity,
+                            event.direction,
+                        ),
+                        velocity: event.velocity,
+                        direction: event.direction,
+                        station: event.station,
+                        position: match event.direction {
+                            VehicleDirection::EastToWest => RelativeVehiclePosition::WestEnd,
+                            VehicleDirection::WestToEast => RelativeVehiclePosition::EastEnd,
+                        },
+                    },
+                };
+
+                self.insert_event(next_ev);
+            }
             // enqueue a terminate call event
             None => {
                 let terminate_ev = CellEvent {
                     idx: event.idx,
+                    run: event.run,
                     time: event.time + event.remaining_time,
-                    ty: CellEventType::TerminateCall,
+                    ty: CellEventType::Terminate,
                     remaining_time: 0.0,
                     ttn: None,
                     velocity: event.velocity,
                     direction: event.direction,
                     station: event.station,
-                    position: todo!(),
+                    position: {
+                        let dist = event.velocity / 3.6 * event.remaining_time;
+                        let pos = match event.direction {
+                            VehicleDirection::EastToWest => {
+                                RelativeVehiclePosition::Other(event.position.to_float() - dist)
+                            }
+                            VehicleDirection::WestToEast => {
+                                RelativeVehiclePosition::Other(event.position.to_float() + dist)
+                            }
+                        };
+
+                        assert!(
+                            pos.to_float() >= VEHICLE_LOC_DIST.0,
+                            "vehicle position must be within station bounds"
+                        );
+                        assert!(
+                            pos.to_float() <= VEHICLE_LOC_DIST.1,
+                            "vehicle position must be within station bounds"
+                        );
+
+                        pos
+                    },
                 };
+
+                // TODO: handle event immediately if future event occurrs at the same time
+                self.insert_event(terminate_ev);
             }
         }
 
-        todo!()
+        results
     }
 
     fn process_call_terminate(
@@ -151,8 +228,18 @@ impl EventProcessor {
         event: CellEvent,
         shared: &mut Shared,
     ) -> Vec<CellEventResult> {
-        assert!(matches!(event.ty, CellEventType::TerminateCall));
-        todo!()
+        assert!(matches!(event.ty, CellEventType::Terminate));
+
+        let station = shared
+            .base_stations
+            .get_mut(event.station as usize)
+            .expect("station must exist");
+
+        let res = station.process_request(StationRequest::Terminate);
+
+        let result = event.to_result(res);
+
+        vec![result]
     }
 
     fn process_call_handover(
@@ -160,7 +247,21 @@ impl EventProcessor {
         event: CellEvent,
         shared: &mut Shared,
     ) -> Vec<CellEventResult> {
-        assert!(matches!(event.ty, CellEventType::HandoverCall));
+        assert!(matches!(event.ty, CellEventType::Handover));
+
+        let depart_station = shared
+            .base_stations
+            .get_mut(event.station as usize)
+            .expect("station must exist");
+
+        let arr_station = shared
+            .base_stations
+            .get_mut(match event.direction {
+                VehicleDirection::EastToWest => event.station as usize - 1,
+                VehicleDirection::WestToEast => event.station as usize + 1,
+            })
+            .expect("station must exist");
+
         todo!()
     }
 }

@@ -16,6 +16,9 @@ use std::{fs, io};
 
 use crate::generator::CallEventGenerator;
 
+/// Common float type for the simulator
+type FloatingPoint = f32;
+
 /// Random number generator source
 #[derive(Clone)]
 struct RngSource<T>(T);
@@ -29,30 +32,31 @@ impl<T: rand::RngCore> source::Source for RngSource<T> {
 fn main() -> io::Result<()> {
     let args = args::CliArgs::parse();
 
-    match args.generate {
-        Some(num_gen) => {
-            let generator = CallEventGenerator::new(
-                RngSource(rand::rngs::ThreadRng::default()),
-                None,
-                None,
-                None,
-                None,
-                None,
-            );
+    if let Some(num_gen) = args.generate {
+        let generator = CallEventGenerator::new(
+            1,
+            RngSource(rand::rngs::ThreadRng::default()),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
 
-            generate_num_to_file(generator, num_gen, &args.generate_to)?;
-            return Ok(());
-        }
-        None => (),
+        generate_num_to_file(generator, num_gen, &args.generate_to)?;
+        return Ok(());
     }
 
     let shared_resources = Shared::new(args.reserved_handover_channels as usize);
     let mut perf_measures: Vec<PerfMeasure> = Vec::new();
 
-    for iteration in 0..args.num_runs as usize {
+    for run_idx in 0..args.num_runs as usize {
         // new generator for each iteration
         let generator = CallEventGenerator::new(
+            run_idx + 1,
             RngSource(rand::rngs::ThreadRng::default()),
+            None,
             None,
             None,
             None,
@@ -67,8 +71,8 @@ fn main() -> io::Result<()> {
                     .take(args.num_events as usize)
                     .unzip();
 
-                let sim_a = EventProcessor::new(iteration + 1, events_a);
-                let sim_b = EventProcessor::new(iteration + 1, events_b);
+                let sim_a = EventProcessor::new(run_idx + 1, events_a);
+                let sim_b = EventProcessor::new(run_idx + 1, events_b);
 
                 let mut run_a = EventRunner::init(sim_a, Some(shared_resources.clone()));
                 let mut run_b = EventRunner::init(sim_b, Some(shared_resources.clone()));
@@ -80,7 +84,7 @@ fn main() -> io::Result<()> {
 
                 perf_measures.push(avg_perf_measure);
 
-                if iteration == 0 {
+                if run_idx == 0 {
                     run_a.write_to_file(&args.event_log_output, false)?;
                 } else {
                     run_a.write_to_file(&args.event_log_output, true)?;
@@ -91,13 +95,13 @@ fn main() -> io::Result<()> {
             false => {
                 let gen_events = generator.take(args.num_events as usize).collect::<Vec<_>>();
 
-                let sim = EventProcessor::new(iteration + 1, gen_events);
+                let sim = EventProcessor::new(run_idx + 1, gen_events);
                 let mut run = EventRunner::init(sim, Some(shared_resources.clone()));
 
                 run.run();
                 perf_measures.push(run.performance_measure());
 
-                match iteration == 0 {
+                match run_idx == 0 {
                     true => run.write_to_file(&args.event_log_output, false)?,
                     false => run.write_to_file(&args.event_log_output, true)?,
                 }
@@ -126,7 +130,7 @@ where
     let mut writer = csv::Writer::from_path(file)?;
 
     for ev in event_gen.take(num_gen as usize) {
-        println!("event time: {}", ev.time);
+        // println!("event time: {}", ev.time);
         writer.serialize(ev)?;
     }
 

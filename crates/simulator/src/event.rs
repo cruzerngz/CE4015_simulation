@@ -7,16 +7,15 @@ use std::{
 
 use serde::Serialize;
 
-use crate::base_station::StationResponse;
-
-/// Common float type for the simulator
-type FloatingPoint = f32;
+use crate::{base_station::StationResponse, generator::VEHICLE_LOC_DIST, FloatingPoint};
 
 /// A discrete event in the simulator
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Copy, Debug, Serialize)]
 pub struct CellEvent {
     /// Event index
     pub idx: usize,
+
+    pub run: u32,
 
     /// Time of event
     pub time: FloatingPoint,
@@ -41,7 +40,7 @@ pub struct CellEvent {
 
     /// Station currently in range of vehicle
     #[serde(serialize_with = "serialize_base_station")]
-    pub station: BaseStation,
+    pub station: BaseStationIdx,
 
     /// Position of vehicle relative to station
     pub position: RelativeVehiclePosition,
@@ -50,35 +49,35 @@ pub struct CellEvent {
 /// Result of an event
 #[derive(Debug, Serialize)]
 pub struct CellEventResult {
-
-    idx: usize,
+    /// Event index
+    pub idx: usize,
 
     /// Simulation run number
-    run: u32,
+    pub run: u32,
 
     /// Time of the event, in seconds from the start of the simulation
-    time: FloatingPoint,
+    pub time: FloatingPoint,
 
     /// Call init number, in order of initiation
-    call_number: u32,
+    // pub call_number: u32,
 
     /// Event type
-    ty: CellEventType,
+    pub ty: CellEventType,
 
     /// Indicate if the event was successful.
     ///
     /// For unsuccessful call initiations, the call is blocked.
     /// For unsuccessful call handovers, the call is dropped.
-    outcome: StationResponse,
+    pub outcome: StationResponse,
 
-    direction: VehicleDirection,
+    pub direction: VehicleDirection,
 
     /// Vehicle speed
-    speed: FloatingPoint,
+    pub speed: FloatingPoint,
 
     /// Base station involved in the event
     #[serde(serialize_with = "serialize_base_station")]
-    station: BaseStation,
+    pub station: BaseStationIdx,
 }
 
 /// Performance measure for sim
@@ -92,20 +91,20 @@ pub struct PerfMeasure {
 }
 
 /// Inner event type
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Copy,Debug, Serialize)]
 pub enum CellEventType {
     /// A call is initiated by a customer
-    InitiateCall,
+    Initiate,
 
     /// A call is terminated by a customer
-    TerminateCall,
+    Terminate,
 
     /// A customer's call is passed from one base station to another.
-    HandoverCall,
+    Handover,
 }
 
 /// Vehicle movement direction
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Copy, Debug, Serialize)]
 pub enum VehicleDirection {
     /// The vehicle is moving from left to right, and encounters base stations in
     /// ascending order.
@@ -123,7 +122,7 @@ pub enum VehicleDirection {
 /// Type safety boi
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(usize)]
-pub enum BaseStation {
+pub enum BaseStationIdx {
     One = 0,
     Two = 1,
     Three = 2,
@@ -146,7 +145,7 @@ pub enum BaseStation {
     Twenty = 19,
 }
 
-fn serialize_base_station<S>(station: &BaseStation, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_base_station<S>(station: &BaseStationIdx, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
@@ -155,7 +154,7 @@ where
 }
 
 /// Position of vehicle relative to the base station
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Copy, Debug, Serialize)]
 pub enum RelativeVehiclePosition {
     /// Vehicle is at the western end of the station's coverage
     /// area.
@@ -212,6 +211,33 @@ impl Div<f64> for PerfMeasure {
         Self {
             blocked_calls: self.blocked_calls / rhs as FloatingPoint,
             dropped_cals: self.dropped_cals / rhs as FloatingPoint,
+        }
+    }
+}
+
+impl RelativeVehiclePosition {
+    /// Convert this value to the relative distance from the western end of the
+    /// base station.
+    pub fn to_float(&self) -> FloatingPoint {
+        match self {
+            RelativeVehiclePosition::WestEnd => VEHICLE_LOC_DIST.0,
+            RelativeVehiclePosition::EastEnd => VEHICLE_LOC_DIST.1,
+            RelativeVehiclePosition::Other(pos) => *pos,
+        }
+    }
+}
+
+impl CellEvent {
+    pub fn to_result(&self, outcome: StationResponse) -> CellEventResult {
+        CellEventResult {
+            idx: self.idx,
+            run: self.run,
+            time: self.time,
+            ty: self.ty,
+            outcome,
+            direction: self.direction,
+            speed: self.velocity,
+            station: self.station,
         }
     }
 }

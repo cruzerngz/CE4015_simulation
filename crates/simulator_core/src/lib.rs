@@ -2,13 +2,15 @@
 
 use std::{
     fs,
-    io::{self, Write},
+    io::{self, Write}, ops::{Add, Div},
 };
 
 pub trait EventLike {
     type SharedResources: Default;
     type EventStats;
-    type PerformanceMeasure;
+
+    /// Performance measure should implement addition and division
+    type PerformanceMeasure: Add<Output = Self::PerformanceMeasure> + Div<f64>;
 
     /// Step through one event in the simulation.
     fn step(&mut self, shared: &mut Self::SharedResources) -> Option<Vec<Self::EventStats>>;
