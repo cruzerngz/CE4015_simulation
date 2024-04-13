@@ -91,7 +91,7 @@ pub struct PerfMeasure {
 }
 
 /// Inner event type
-#[derive(Clone, Copy,Debug, Serialize)]
+#[derive(Clone, Copy, Debug, Serialize)]
 pub enum CellEventType {
     /// A call is initiated by a customer
     Initiate,
@@ -242,6 +242,50 @@ impl CellEvent {
     }
 }
 
+impl BaseStationIdx {
+    pub fn next_station(&self, dir: VehicleDirection) -> Option<Self> {
+        let station_idx = *self as usize;
+
+        match dir {
+            VehicleDirection::WestToEast => {
+                if station_idx < 19 {
+                    Some(unsafe { std::mem::transmute(station_idx + 1) })
+                } else {
+                    None
+                }
+            }
+            VehicleDirection::EastToWest => {
+                if station_idx > 0 {
+                    Some(unsafe { std::mem::transmute(station_idx - 1) })
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    pub fn previous_station(&self, dir: VehicleDirection) -> Option<Self> {
+        let station_idx = *self as usize;
+
+        match dir {
+            VehicleDirection::WestToEast => {
+                if station_idx > 0 {
+                    Some(unsafe { std::mem::transmute(station_idx - 1) })
+                } else {
+                    None
+                }
+            }
+            VehicleDirection::EastToWest => {
+                if station_idx < 19 {
+                    Some(unsafe { std::mem::transmute(station_idx + 1) })
+                } else {
+                    None
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -250,5 +294,51 @@ mod tests {
     fn test_sort_floats() {
         let mut x: Vec<CellEvent> = Default::default();
         x.sort();
+    }
+
+    #[test]
+    fn test_base_station_next() {
+        let station = BaseStationIdx::One;
+        let next_station = station.next_station(VehicleDirection::WestToEast);
+        assert_eq!(next_station, Some(BaseStationIdx::Two));
+
+        let station = BaseStationIdx::Twenty;
+        let next_station = station.next_station(VehicleDirection::WestToEast);
+        assert_eq!(next_station, None);
+
+        let station = BaseStationIdx::Twenty;
+        let next_station = station.next_station(VehicleDirection::EastToWest);
+        assert_eq!(next_station, Some(BaseStationIdx::Nineteen));
+
+        let station = BaseStationIdx::One;
+        let next_station = station.next_station(VehicleDirection::EastToWest);
+        assert_eq!(next_station, None);
+
+        let station = BaseStationIdx::Ten;
+        let next_station = station.next_station(VehicleDirection::EastToWest);
+        assert_eq!(next_station, Some(BaseStationIdx::Nine));
+    }
+
+    #[test]
+    fn test_base_station_prev() {
+        let station = BaseStationIdx::One;
+        let prev_station = station.previous_station(VehicleDirection::WestToEast);
+        assert_eq!(prev_station, None);
+
+        let station = BaseStationIdx::Twenty;
+        let prev_station = station.previous_station(VehicleDirection::WestToEast);
+        assert_eq!(prev_station, Some(BaseStationIdx::Nineteen));
+
+        let station = BaseStationIdx::Twenty;
+        let prev_station = station.previous_station(VehicleDirection::EastToWest);
+        assert_eq!(prev_station, None);
+
+        let station = BaseStationIdx::One;
+        let prev_station = station.previous_station(VehicleDirection::EastToWest);
+        assert_eq!(prev_station, Some(BaseStationIdx::Two));
+
+        let station = BaseStationIdx::Ten;
+        let prev_station = station.previous_station(VehicleDirection::EastToWest);
+        assert_eq!(prev_station, Some(BaseStationIdx::Eleven));
     }
 }

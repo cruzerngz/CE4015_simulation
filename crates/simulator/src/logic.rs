@@ -1,6 +1,6 @@
 //! Event processing logic
 
-use std::collections::VecDeque;
+use std::{collections::VecDeque, fmt::Display};
 
 use simulator_core::EventLike;
 
@@ -38,14 +38,17 @@ impl EventLike for EventProcessor {
     fn step(&mut self, shared: &mut Self::SharedResources) -> Option<Vec<Self::EventStats>> {
         let next_event = self.fel.pop_front()?;
 
+        println!(
+            "\n{:?} at station {:?}, dir {:?}",
+            next_event.ty, next_event.station, next_event.direction
+        );
+        println!("event time: {}", next_event.time);
+        println!("{}", shared);
+
         let results = match next_event.ty {
-            crate::event::CellEventType::Initiate => {
-                self.process_call_initiation(next_event, shared)
-            }
-            crate::event::CellEventType::Terminate => {
-                self.process_call_terminate(next_event, shared)
-            }
-            crate::event::CellEventType::Handover => self.process_call_handover(next_event, shared),
+            CellEventType::Initiate => self.process_call_initiation(next_event, shared),
+            CellEventType::Terminate => self.process_call_terminate(next_event, shared),
+            CellEventType::Handover => self.process_call_handover(next_event, shared),
         };
 
         Some(results)
@@ -53,6 +56,20 @@ impl EventLike for EventProcessor {
 
     fn calculate_performance_measure(results: &[Self::EventStats]) -> Self::PerformanceMeasure {
         todo!()
+    }
+}
+
+impl Display for Shared {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let station_arr = self
+            .base_stations
+            .iter()
+            .enumerate()
+            .map(|(idx, s)| format!("{:02}::{:02}", idx + 1, s.available_channels))
+            .collect::<Vec<_>>()
+            .join(",");
+
+        write!(f, "{}", station_arr)
     }
 }
 
@@ -89,6 +106,8 @@ impl EventProcessor {
 
     /// Insert an event in sorted order into the queue
     pub fn insert_event(&mut self, event: CellEvent) {
+        println!("inserting {:?} event into fel", event.ty);
+
         match self.fel.binary_search(&event) {
             Ok(pos) | Err(pos) => {
                 self.fel.insert(pos, event);
@@ -96,50 +115,36 @@ impl EventProcessor {
         }
     }
 
-    // event parameter must be a call initiation event
-    fn process_call_initiation(
-        &mut self,
-        event: CellEvent,
-        shared: &mut Shared,
-    ) -> Vec<CellEventResult> {
-        assert!(matches!(event.ty, CellEventType::Initiate));
-
-        // check shared resource
-
-        let station = shared
-            .base_stations
-            .get_mut(event.station as usize)
-            .expect("station must exist");
-
-        let response = station.process_request(StationRequest::Initiate);
-
-        let ev_result = CellEventResult {
-            idx: event.idx,
-            run: event.run,
-            time: event.time,
-            ty: event.ty,
-            outcome: response,
-            direction: event.direction,
-            speed: event.velocity,
-            station: event.station,
-        };
-
-        let mut results = vec![ev_result];
-
-        if let StationResponse::Blocked = response {
-            return results;
-        }
-
+    /// Logic for creating future handover/termination events after an initiation/handover
+    fn handle_handover_terminate(&mut self, event: CellEvent) -> Vec<CellEventResult> {
         match event.ttn {
             // enqueue handover/terminate call event
             Some(tt_next) => {
                 let remaining_call_time = event.remaining_time - tt_next;
 
-                // check for termination
-                // Time not correct
-                let next_ev = match (event.station, event.direction) {
-                    (BaseStationIdx::One, VehicleDirection::EastToWest)
-                    | (BaseStationIdx::Twenty, VehicleDirection::WestToEast) => CellEvent {
+                let next_ev = match event.station.next_station(event.direction) {
+                    Some(next_station) => CellEvent {
+                        idx: event.idx,
+                        run: event.run,
+                        time: event.time + tt_next,
+                        ty: CellEventType::Handover,
+                        remaining_time: remaining_call_time,
+                        ttn: calculate_ttn(
+                            remaining_call_time,
+                            event.position.to_float(),
+                            event.velocity,
+                            event.direction,
+                        ),
+                        velocity: event.velocity,
+                        direction: event.direction,
+                        // handover station refers to the station that the vehicle will connect to
+                        station: next_station,
+                        position: match event.direction {
+                            VehicleDirection::EastToWest => RelativeVehiclePosition::WestEnd,
+                            VehicleDirection::WestToEast => RelativeVehiclePosition::EastEnd,
+                        },
+                    },
+                    None => CellEvent {
                         idx: event.idx,
                         run: event.run,
                         time: event.time + tt_next,
@@ -154,32 +159,58 @@ impl EventProcessor {
                             VehicleDirection::WestToEast => RelativeVehiclePosition::EastEnd,
                         },
                     },
-
-                    _ => CellEvent {
-                        idx: event.idx,
-                        run: event.run,
-                        time: event.time + tt_next,
-                        ty: CellEventType::Handover,
-                        remaining_time: remaining_call_time,
-                        ttn: calculate_ttn(
-                            remaining_call_time,
-                            0.0,
-                            event.velocity,
-                            event.direction,
-                        ),
-                        velocity: event.velocity,
-                        direction: event.direction,
-                        station: event.station,
-                        position: match event.direction {
-                            VehicleDirection::EastToWest => RelativeVehiclePosition::WestEnd,
-                            VehicleDirection::WestToEast => RelativeVehiclePosition::EastEnd,
-                        },
-                    },
                 };
+
+                // let next_ev = match (event.station, event.direction) {
+                //     // at the end of the line, terminate regardless of remaining call duration
+                //     (BaseStationIdx::One, VehicleDirection::EastToWest)
+                //     | (BaseStationIdx::Twenty, VehicleDirection::WestToEast) => CellEvent {
+                //         idx: event.idx,
+                //         run: event.run,
+                //         time: event.time + tt_next,
+                //         ty: CellEventType::Terminate,
+                //         remaining_time: remaining_call_time,
+                //         ttn: None,
+                //         velocity: event.velocity,
+                //         direction: event.direction,
+                //         station: event.station,
+                //         position: match event.direction {
+                //             VehicleDirection::EastToWest => RelativeVehiclePosition::WestEnd,
+                //             VehicleDirection::WestToEast => RelativeVehiclePosition::EastEnd,
+                //         },
+                //     },
+
+                //     // handover
+                //     _ => CellEvent {
+                //         idx: event.idx,
+                //         run: event.run,
+                //         time: event.time + tt_next,
+                //         ty: CellEventType::Handover,
+                //         remaining_time: remaining_call_time,
+                //         ttn: calculate_ttn(
+                //             remaining_call_time,
+                //             event.position.to_float(),
+                //             event.velocity,
+                //             event.direction,
+                //         ),
+                //         velocity: event.velocity,
+                //         direction: event.direction,
+                //         // handover station refers to the station that the vehicle will connect to
+                //         station: event
+                //             .station
+                //             .next_station(event.direction)
+                //             .expect("next station must exist"),
+                //         position: match event.direction {
+                //             VehicleDirection::EastToWest => RelativeVehiclePosition::WestEnd,
+                //             VehicleDirection::WestToEast => RelativeVehiclePosition::EastEnd,
+                //         },
+                //     },
+                // };
 
                 self.insert_event(next_ev);
             }
-            // enqueue a terminate call event
+
+            // call about to end, terminate
             None => {
                 let terminate_ev = CellEvent {
                     idx: event.idx,
@@ -202,6 +233,7 @@ impl EventProcessor {
                             }
                         };
 
+                        println!("vehicle position: {:?}", pos);
                         assert!(
                             pos.to_float() >= VEHICLE_LOC_DIST.0,
                             "vehicle position must be within station bounds"
@@ -220,6 +252,47 @@ impl EventProcessor {
             }
         }
 
+        vec![]
+    }
+
+    // event parameter must be a call initiation event
+    fn process_call_initiation(
+        &mut self,
+        event: CellEvent,
+        shared: &mut Shared,
+    ) -> Vec<CellEventResult> {
+        assert!(matches!(event.ty, CellEventType::Initiate));
+
+        // check shared resource
+
+        let station = shared
+            .base_stations
+            .get_mut(event.station as usize)
+            .expect("station must exist");
+
+        let response = station.process_request(StationRequest::Initiate);
+        println!("call init response: {:?}", response);
+
+        let ev_result = CellEventResult {
+            idx: event.idx,
+            run: event.run,
+            time: event.time,
+            ty: event.ty,
+            outcome: response,
+            direction: event.direction,
+            speed: event.velocity,
+            station: event.station,
+        };
+
+        let mut results = vec![ev_result];
+
+        if let StationResponse::Blocked = response {
+            return results;
+        }
+
+        let additional_res = self.handle_handover_terminate(event);
+        results.extend(additional_res);
+
         results
     }
 
@@ -236,6 +309,7 @@ impl EventProcessor {
             .expect("station must exist");
 
         let res = station.process_request(StationRequest::Terminate);
+        assert!(matches!(res, StationResponse::Success));
 
         let result = event.to_result(res);
 
@@ -249,19 +323,66 @@ impl EventProcessor {
     ) -> Vec<CellEventResult> {
         assert!(matches!(event.ty, CellEventType::Handover));
 
-        let depart_station = shared
-            .base_stations
-            .get_mut(event.station as usize)
-            .expect("station must exist");
+        let depart_station = &mut shared.base_stations[event
+            .station
+            .previous_station(event.direction)
+            .expect("previous station must exist for handovers")
+            as usize];
 
-        let arr_station = shared
-            .base_stations
-            .get_mut(match event.direction {
-                VehicleDirection::EastToWest => event.station as usize - 1,
-                VehicleDirection::WestToEast => event.station as usize + 1,
-            })
-            .expect("station must exist");
+        let res = depart_station.process_request(StationRequest::HandoverDisconnect);
+        assert!(matches!(res, StationResponse::Success));
 
-        todo!()
+        let arr_station = &mut shared.base_stations[event.station as usize];
+
+        let res = arr_station.process_request(StationRequest::HandoverConnect);
+
+        let mut results = vec![event.to_result(res)];
+
+        // u are failure
+        if let StationResponse::Blocked = res {
+            return results;
+        }
+
+        let additional_res = self.handle_handover_terminate(event);
+        results.extend(additional_res);
+
+        results
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::FloatingPoint;
+
+    use super::*;
+
+    #[test]
+    fn test_shared_display() {
+        let shared = Shared::new(1);
+        println!("{}", shared);
+    }
+
+    #[test]
+    fn test_insert_into_fel() {
+        let events = (0..10).into_iter().map(|idx| CellEvent {
+            idx,
+            run: 0,
+            time: idx as FloatingPoint,
+            ty: CellEventType::Initiate,
+            remaining_time: 0.0,
+            ttn: None,
+            velocity: 0.0,
+            direction: VehicleDirection::EastToWest,
+            station: BaseStationIdx::One,
+            position: RelativeVehiclePosition::EastEnd,
+        });
+
+        let mut proc = EventProcessor::new(1, vec![]);
+        for ev in events {
+            proc.insert_event(ev);
+        }
+
+        println!("fel len: {}", proc.fel.len());
+        println!("{:#?}", proc.fel);
     }
 }

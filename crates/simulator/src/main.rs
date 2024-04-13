@@ -29,13 +29,38 @@ impl<T: rand::RngCore> source::Source for RngSource<T> {
     }
 }
 
+/// A deterministic source used for testing
+#[derive(Clone, Debug)]
+struct DetermnisticSource(u64);
+
+impl rand::RngCore for DetermnisticSource {
+    fn next_u32(&mut self) -> u32 {
+        self.0 = self.0.wrapping_add(1);
+        self.0 as u32
+    }
+
+    fn next_u64(&mut self) -> u64 {
+        self.0 = self.0.wrapping_add(1);
+        self.0
+    }
+
+    fn fill_bytes(&mut self, dest: &mut [u8]) {
+        // self.0 = self.0.wrapping_add(*dest.get(0).unwrap_or(&0) as u64);
+    }
+
+    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand::Error> {
+        // self.0 = self.0.wrapping_add(*dest.get(0).unwrap_or(&0) as u64);
+        Ok(())
+    }
+}
+
 fn main() -> io::Result<()> {
     let args = args::CliArgs::parse();
 
     if let Some(num_gen) = args.generate {
         let generator = CallEventGenerator::new(
             1,
-            RngSource(rand::rngs::OsRng::default()),
+            RngSource(DetermnisticSource(1)),
             None,
             None,
             None,
@@ -49,6 +74,8 @@ fn main() -> io::Result<()> {
     }
 
     let shared_resources = Shared::new(args.reserved_handover_channels as usize);
+    println!("base stations: {:#?}", shared_resources);
+
     let mut perf_measures: Vec<PerfMeasure> = Vec::new();
 
     for run_idx in 0..args.num_runs as usize {

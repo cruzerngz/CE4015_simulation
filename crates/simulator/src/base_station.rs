@@ -83,9 +83,13 @@ impl BaseStation {
 
     /// Process an incoming request.
     pub fn process_request(&mut self, req: StationRequest) -> StationResponse {
-        match req {
+        let resp = match req {
             StationRequest::Initiate => match self.reserved_handover_channels {
                 Some(reserved) => {
+                    // println!(
+                    //     "reserved handover: {}, available channels: {}",
+                    //     reserved, self.available_channels
+                    // );
                     if self.available_channels <= reserved {
                         StationResponse::Blocked
                     } else {
@@ -94,6 +98,7 @@ impl BaseStation {
                     }
                 }
                 None => {
+                    // println!("available channels: {}", self.available_channels);
                     if self.available_channels > 0 {
                         self.available_channels -= 1;
                         StationResponse::Success
@@ -105,6 +110,10 @@ impl BaseStation {
 
             StationRequest::Terminate | StationRequest::HandoverDisconnect => {
                 self.available_channels += 1;
+                // println!(
+                //     "terminate/handover disconnect. Channels available: {}",
+                //     self.available_channels
+                // );
                 assert!(self.available_channels <= self.channels);
                 StationResponse::Success
             }
@@ -117,7 +126,14 @@ impl BaseStation {
                     StationResponse::Terminated
                 }
             }
-        }
+        };
+
+        println!(
+            "station resp: {:?}, remaining channels: {}",
+            resp, self.available_channels
+        );
+
+        resp
     }
 }
 
