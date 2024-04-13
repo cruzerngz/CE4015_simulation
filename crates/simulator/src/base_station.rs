@@ -3,6 +3,8 @@
 
 use serde::Serialize;
 
+use crate::debug_println;
+
 /// The base station that handles calls.
 ///
 /// Each base station has a fixed number of available channels.
@@ -88,12 +90,12 @@ impl BaseStation {
     ///
     /// Idx is used for debugging.
     pub fn process_request(&mut self, req: StationRequest, idx: usize) -> StationResponse {
-        println!("{:?} request from event {}", req, idx);
+        debug_println!("{:?} request from event {}", req, idx);
 
         let resp = match req {
             StationRequest::Initiate => match self.reserved_handover_channels {
                 Some(reserved) => {
-                    // println!(
+                    // debug_println!(
                     //     "reserved handover: {}, available channels: {}",
                     //     reserved, self.available_channels
                     // );
@@ -106,7 +108,7 @@ impl BaseStation {
                     }
                 }
                 None => {
-                    // println!("available channels: {}", self.available_channels);
+                    // debug_println!("available channels: {}", self.available_channels);
                     if self.available_channels > 0 {
                         self.available_channels -= 1;
                         self.active_users.push(idx);
@@ -127,7 +129,7 @@ impl BaseStation {
                 }
 
                 self.available_channels += 1;
-                // println!(
+                // debug_println!(
                 //     "terminate/handover disconnect. Channels available: {}",
                 //     self.available_channels
                 // );
@@ -163,7 +165,7 @@ impl BaseStation {
             "no duplicate users"
         );
 
-        println!(
+        debug_println!(
             "station resp: {:?}, remaining channels: {}",
             resp, self.available_channels
         );
@@ -188,7 +190,7 @@ mod tests {
         }
 
         let init_into_reserve = base_station.process_request(StationRequest::Initiate, 10);
-        println!(
+        debug_println!(
             "initiate call with 1 reserved slot:   {:?}",
             init_into_reserve
         );

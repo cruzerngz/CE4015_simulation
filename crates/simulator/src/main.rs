@@ -17,7 +17,7 @@ use std::{fs, io, path::PathBuf};
 use crate::generator::CallEventGenerator;
 
 /// Common float type for the simulator
-type FloatingPoint = f32;
+type FloatingPoint = f64;
 
 /// Random number generator source
 #[derive(Clone)]
@@ -108,7 +108,7 @@ fn main() -> io::Result<()> {
     }
 
     let shared_resources = Shared::new(args.reserved_handover_channels as usize);
-    println!("base stations: {:#?}", shared_resources);
+    debug_println!("base stations: {:#?}", shared_resources);
 
     let mut perf_measures: Vec<PerfMeasure> = Vec::new();
 
@@ -199,3 +199,24 @@ where
 
     Ok(())
 }
+
+/// Prints as per normal when in debug mode.
+/// Does not print when in release mode.
+#[macro_export]
+macro_rules! debug_println {
+    ($($args:tt)*) => {
+        #[cfg(debug_assertions)]
+        println!($($args)*);
+    };
+}
+
+#[macro_export]
+macro_rules! debug_print {
+    ($($args:tt)*) => {
+        #[cfg(debug_assertions)]
+        print!($($args)*);
+    };
+}
+
+// use debug_println;
+// use debug_print;

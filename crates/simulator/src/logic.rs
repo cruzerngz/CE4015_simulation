@@ -5,13 +5,10 @@ use std::{collections::VecDeque, fmt::Display};
 use simulator_core::EventLike;
 
 use crate::{
-    base_station::{BaseStation, StationRequest, StationResponse},
-    event::{
+    base_station::{BaseStation, StationRequest, StationResponse}, debug_println, event::{
         BaseStationIdx, CellEvent, CellEventResult, CellEventType, PerfMeasure,
         RelativeVehiclePosition, VehicleDirection,
-    },
-    generator::{calculate_ttn, VEHICLE_LOC_DIST},
-    FloatingPoint,
+    }, generator::{calculate_ttn, VEHICLE_LOC_DIST}, FloatingPoint
 };
 
 /// Process events in the simulation
@@ -39,18 +36,18 @@ impl EventLike for EventProcessor {
     fn step(&mut self, shared: &mut Self::SharedResources) -> Option<Vec<Self::EventStats>> {
         let next_event = self.fel.pop_front()?;
 
-        println!(
+        debug_println!(
             "\nevent {}: {:?} at station {:?}, dir {:?}",
             next_event.idx, next_event.ty, next_event.station, next_event.direction
         );
-        println!("event time: {}", next_event.time);
-        println!("event remaining time: {}", next_event.remaining_time);
-        println!(
+        debug_println!("event time: {}", next_event.time);
+        debug_println!("event remaining time: {}", next_event.remaining_time);
+        debug_println!(
             "velocity: {} km/h covers 2000m in {}s",
             next_event.velocity,
             2000.0 / next_event.velocity * 3.6
         );
-        println!("{}", shared);
+        debug_println!("{}", shared);
 
         let results = match next_event.ty {
             CellEventType::Initiate => self.process_call_initiation(next_event, shared),
@@ -136,7 +133,7 @@ impl EventProcessor {
 
     /// Insert an event in sorted order into the queue
     pub fn insert_event(&mut self, event: CellEvent) {
-        println!("inserting {:?} event into fel", event.ty);
+        debug_println!("inserting {:?} event into fel", event.ty);
 
         match self.fel.binary_search(&event) {
             Ok(pos) | Err(pos) => {
@@ -211,7 +208,7 @@ impl EventProcessor {
                     station: event.station,
                     position: {
                         let dist = event.velocity / 3.6 * event.remaining_time;
-                        println!("dist: {}", dist);
+                        debug_println!("dist: {}", dist);
                         let pos = match event.direction {
                             VehicleDirection::EastToWest => {
                                 RelativeVehiclePosition::Other(event.position.to_float() - dist)
@@ -221,7 +218,7 @@ impl EventProcessor {
                             }
                         };
 
-                        println!("vehicle position: {:?}", pos);
+                        debug_println!("vehicle position: {:?}", pos);
                         assert!(
                             pos.to_float() >= VEHICLE_LOC_DIST.0,
                             "vehicle position must be within station bounds"
@@ -256,7 +253,7 @@ impl EventProcessor {
         let station = &mut shared.base_stations[event.station as usize];
 
         let response = station.process_request(StationRequest::Initiate, event.idx);
-        println!("call init response: {:?}", response);
+        debug_println!("call init response: {:?}", response);
 
         let ev_result = event.to_result(response);
 
@@ -297,11 +294,11 @@ impl EventProcessor {
         assert!(matches!(event.ty, CellEventType::Handover));
 
         let prev_idx = event.station.previous_station(event.direction).unwrap();
-        // println!("previous station: {:?}", prev_idx);
+        // debug_println!("previous station: {:?}", prev_idx);
 
         let depart_station = &mut shared.base_stations[prev_idx as usize];
 
-        println!("attempting disconnect from station {:?}", prev_idx);
+        debug_println!("attempting disconnect from station {:?}", prev_idx);
         let res = depart_station.process_request(StationRequest::HandoverDisconnect, event.idx);
         assert!(matches!(res, StationResponse::Success));
 
@@ -332,7 +329,7 @@ mod tests {
     #[test]
     fn test_shared_display() {
         let shared = Shared::new(1);
-        println!("{}", shared);
+        debug_println!("{}", shared);
     }
 
     #[test]
@@ -355,7 +352,7 @@ mod tests {
             proc.insert_event(ev);
         }
 
-        println!("fel len: {}", proc.fel.len());
-        println!("{:#?}", proc.fel);
+        debug_println!("fel len: {}", proc.fel.len());
+        debug_println!("{:#?}", proc.fel);
     }
 }

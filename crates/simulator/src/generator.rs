@@ -428,6 +428,8 @@ mod tests {
 
     use probability::distribution::Uniform;
 
+    use crate::debug_println;
+
     use super::*;
 
     struct MockSource(u64);
@@ -443,12 +445,12 @@ mod tests {
         let mut gen = SingleVariateIterator::new(Uniform::new(0.0, 10.0), source::default(0));
 
         for sample in gen.clone().take(10) {
-            println!("{:?}", sample);
+            debug_println!("{:?}", sample);
         }
 
         let sum = gen.clone().take(1000).sum::<f64>();
         let avg = sum / 1000.0;
-        println!("average: {}", avg);
+        debug_println!("average: {}", avg);
 
         let antithetic = gen.antithetic_iter();
 
@@ -460,7 +462,7 @@ mod tests {
             .sum::<f64>();
 
         let avg = sum / 1000.0;
-        println!("average: {}", avg);
+        debug_println!("average: {}", avg);
 
         let v = antithetic
             .clone()
@@ -468,7 +470,7 @@ mod tests {
             //     .map(|(a, b)| (a + b) / 2.0)
             .collect::<Vec<_>>();
 
-        println!("{:#?}", v);
+        debug_println!("{:#?}", v);
     }
 
     #[test]
@@ -501,10 +503,10 @@ mod tests {
         let exp_dist = distribution::Exponential::new(1.0 / CALL_DURATION_LAMBDA as f64);
         let res = exp_dist.distribution(CALL_DURATION_LAMBDA as f64);
 
-        println!("distribution: {}", res);
+        debug_println!("distribution: {}", res);
 
         let s = exp_dist.sample(&mut MockSource(u64::MAX / 2));
 
-        println!("sample: {}", s);
+        debug_println!("sample: {}", s);
     }
 }
