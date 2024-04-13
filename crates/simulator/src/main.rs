@@ -11,13 +11,8 @@ use event::PerfMeasure;
 use logic::{EventProcessor, Shared};
 use probability::prelude::*;
 use probability::source::Source;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use simulator_core::EventRunner;
-use std::{
-    fs, io,
-    path::PathBuf,
-    sync::{Arc, Mutex},
-};
+use std::{fs, io, path::PathBuf};
 
 use crate::generator::CallEventGenerator;
 
@@ -115,84 +110,68 @@ fn main() -> io::Result<()> {
     let shared_resources = Shared::new(args.reserved_handover_channels as usize);
     println!("base stations: {:#?}", shared_resources);
 
-    let mut perf_measures: Arc<Mutex<Vec<PerfMeasure>>> = Arc::new(Mutex::new(Vec::new()));
+    let mut perf_measures: Vec<PerfMeasure> = Vec::new();
 
-    (0..args.num_runs as usize)
-        .into_par_iter()
-        .for_each(|run_idx| {
-            // new generator for each iteration
-            let generator = CallEventGenerator::new(
-                run_idx + 1,
-                RngSource(rand::rngs::ThreadRng::default()),
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-            );
+    for run_idx in 0..args.num_runs as usize {
+        // new generator for each iteration
+        let generator = CallEventGenerator::new(
+            run_idx + 1,
+            RngSource(rand::rngs::ThreadRng::default()),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
 
-            match args.antithetic {
-                true => {
-                    let (events_a, events_b): (Vec<_>, Vec<_>) = generator
-                        .antithetic()
-                        .take(args.num_events as usize)
-                        .unzip();
+        match args.antithetic {
+            true => {
+                let (events_a, events_b): (Vec<_>, Vec<_>) = generator
+                    .antithetic()
+                    .take(args.num_events as usize)
+                    .unzip();
 
-                    let sim_a = EventProcessor::new(run_idx + 1, events_a);
-                    let sim_b = EventProcessor::new(run_idx + 1, events_b);
+                let sim_a = EventProcessor::new(run_idx + 1, events_a);
+                let sim_b = EventProcessor::new(run_idx + 1, events_b);
 
-                    let mut run_a = EventRunner::init(sim_a, Some(shared_resources.clone()));
-                    let mut run_b = EventRunner::init(sim_b, Some(shared_resources.clone()));
+                let mut run_a = EventRunner::init(sim_a, Some(shared_resources.clone()));
+                let mut run_b = EventRunner::init(sim_b, Some(shared_resources.clone()));
 
-                    run_a.run();
-                    run_b.run();
-                    let avg_perf_measure =
-                        (run_a.performance_measure() + run_b.performance_measure()) / 2.0;
+                run_a.run();
+                run_b.run();
+                let avg_perf_measure =
+                    (run_a.performance_measure() + run_b.performance_measure()) / 2.0;
 
-                    perf_measures.lock().unwrap().push(avg_perf_measure);
-                    // perf_measures.push(avg_perf_measure);
+                perf_measures.push(avg_perf_measure);
 
-                    if run_idx == 0 {
-                        run_a
-                            .write_to_file(&event_log_path, false)
-                            .expect("failed to write to file");
-                    } else {
-                        run_a
-                            .write_to_file(&event_log_path, true)
-                            .expect("failed to write to file");
-                    }
-
-                    run_b
-                        .write_to_file(&event_log_path, true)
-                        .expect("failed to write to file");
+                if run_idx == 0 {
+                    run_a.write_to_file(&event_log_path, false)?;
+                } else {
+                    run_a.write_to_file(&event_log_path, true)?;
                 }
-                false => {
-                    let gen_events = generator.take(args.num_events as usize).collect::<Vec<_>>();
 
-                    let sim = EventProcessor::new(run_idx + 1, gen_events);
-                    let mut run = EventRunner::init(sim, Some(shared_resources.clone()));
+                run_b.write_to_file(&event_log_path, true)?;
+            }
+            false => {
+                let gen_events = generator.take(args.num_events as usize).collect::<Vec<_>>();
 
-                    run.run();
-                    perf_measures
-                        .lock()
-                        .unwrap()
-                        .push(run.performance_measure());
+                let sim = EventProcessor::new(run_idx + 1, gen_events);
+                let mut run = EventRunner::init(sim, Some(shared_resources.clone()));
 
-                    match run_idx == 0 {
-                        true => run
-                            .write_to_file(&event_log_path, false)
-                            .expect("failed to write to file"),
-                        false => run
-                            .write_to_file(&event_log_path, true)
-                            .expect("failed to write to file"),
-                    }
+                run.run();
+                perf_measures.push(run.performance_measure());
+
+                match run_idx == 0 {
+                    true => run.write_to_file(&event_log_path, false)?,
+                    false => run.write_to_file(&event_log_path, true)?,
                 }
             }
-        });
+        }
+    }
 
     let mut writer = csv::Writer::from_path(&perf_measure_path)?;
-    for perf in perf_measures.lock().unwrap().iter() {
+    for perf in perf_measures {
         writer.serialize(perf)?;
     }
 
