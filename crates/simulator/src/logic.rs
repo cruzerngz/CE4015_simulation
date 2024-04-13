@@ -11,6 +11,7 @@ use crate::{
         RelativeVehiclePosition, VehicleDirection,
     },
     generator::{calculate_ttn, VEHICLE_LOC_DIST},
+    FloatingPoint,
 };
 
 /// Process events in the simulation
@@ -61,7 +62,30 @@ impl EventLike for EventProcessor {
     }
 
     fn calculate_performance_measure(results: &[Self::EventStats]) -> Self::PerformanceMeasure {
-        todo!()
+        let num_initiated_calls = results.iter().map(|res| res.idx).max().unwrap_or_default();
+
+        let num_blocked_calls: usize = results
+            .iter()
+            .map(|res| match res.outcome {
+                StationResponse::Blocked => 1_usize,
+                _ => 0,
+            })
+            .sum();
+
+        let num_terminated_calls: usize = results
+            .iter()
+            .map(|res| match res.outcome {
+                StationResponse::Terminated => 1_usize,
+                _ => 0,
+            })
+            .sum();
+
+        PerfMeasure {
+            blocked_calls: num_blocked_calls as FloatingPoint
+                / num_initiated_calls as FloatingPoint,
+            dropped_cals: num_terminated_calls as FloatingPoint
+                / num_initiated_calls as FloatingPoint,
+        }
     }
 }
 

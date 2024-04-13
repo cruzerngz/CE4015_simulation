@@ -84,10 +84,10 @@ pub struct CellEventResult {
 #[derive(Debug, Serialize)]
 pub struct PerfMeasure {
     /// Percentage of blocked calls
-    blocked_calls: FloatingPoint,
+    pub blocked_calls: FloatingPoint,
 
     /// Percentage of dropped calls
-    dropped_cals: FloatingPoint,
+    pub dropped_cals: FloatingPoint,
 }
 
 /// Inner event type
