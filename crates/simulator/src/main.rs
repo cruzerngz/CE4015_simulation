@@ -35,7 +35,7 @@ fn main() -> io::Result<()> {
     if let Some(num_gen) = args.generate {
         let generator = CallEventGenerator::new(
             1,
-            RngSource(rand::rngs::ThreadRng::default()),
+            RngSource(rand::rngs::OsRng::default()),
             None,
             None,
             None,
