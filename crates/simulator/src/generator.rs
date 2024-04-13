@@ -86,6 +86,10 @@ where
     time_a: FloatingPoint,
     time_b: FloatingPoint,
 
+    count: usize,
+
+    run: usize,
+
     call_duration: AntitheticIterator<ExponentialLoc, S>,
     call_inter_arrival: AntitheticIterator<distribution::Exponential, S>,
     cell_tower: AntitheticIterator<distribution::Uniform, S>,
@@ -305,12 +309,46 @@ where
 
 impl<S> Iterator for AntitheticCallEventGenerator<S>
 where
-    S: Source,
+    S: Source + Clone,
 {
     type Item = (CellEvent, CellEvent);
 
     fn next(&mut self) -> Option<Self::Item> {
-        todo!()
+        let (call_dur_a, call_dur_b) = self.call_duration.clone().take(1).last()?;
+        let (inter_arr_a, inter_arr_b) = self.call_inter_arrival.clone().take(1).last()?;
+        let (cell_tower_a, cell_tower_b) = self.cell_tower.clone().take(1).last()?;
+        let (vehicle_velocity_a, vehicle_velocity_b) =
+            self.vehicle_velocity.clone().take(1).last()?;
+        let (vehicle_position_a, vehicle_position_b) =
+            self.vehicle_position.clone().take(1).last()?;
+        let (vehicle_direction_a, vehicle_direction_b) =
+            self.vehicle_direction.clone().take(1).last()?;
+
+        self.count += 1;
+
+        let ev_a = cell_event_from_random_variables(
+            self.count,
+            self.run as u32,
+            call_dur_a as FloatingPoint,
+            self.time_a,
+            cell_tower_a as FloatingPoint,
+            vehicle_velocity_a as FloatingPoint,
+            vehicle_position_a as FloatingPoint,
+            vehicle_direction_a as FloatingPoint,
+        );
+
+        let ev_b = cell_event_from_random_variables(
+            self.count,
+            self.run as u32,
+            call_dur_b as FloatingPoint,
+            self.time_b,
+            cell_tower_b as FloatingPoint,
+            vehicle_velocity_b as FloatingPoint,
+            vehicle_position_b as FloatingPoint,
+            vehicle_direction_b as FloatingPoint,
+        );
+
+        Some((ev_a, ev_b))
     }
 }
 
@@ -328,7 +366,7 @@ where
 
 impl<D, S> Iterator for AntitheticIterator<D, S>
 where
-    D: Sample + Inverse,
+    D: Sample,
     S: Source + Clone,
 {
     type Item = (D::Value, D::Value);
@@ -413,6 +451,8 @@ where
             source: self.source.clone(),
             time_a: self.time,
             time_b: self.time,
+            count: self.count,
+            run: self.run,
             call_duration: self.call_duration.antithetic_iter(),
             call_inter_arrival: self.call_inter_arrival.antithetic_iter(),
             cell_tower: self.cell_tower.antithetic_iter(),

@@ -10,4 +10,5 @@ csv = "1"
 
 [profile.release]
 lto = true
-strip = "debuginfo"
+# strip = "debuginfo"
+debug = true

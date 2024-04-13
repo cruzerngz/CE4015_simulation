@@ -14,3 +14,4 @@ csv = { workspace = true }
 
 clap = { version = "4", features = ["derive"] }
 rand = "0"
+rayon = "1"
