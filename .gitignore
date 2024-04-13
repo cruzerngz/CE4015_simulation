@@ -14,3 +14,5 @@ target/
 *.pdb
 
 *.pdf
+*.csv
+*.log
