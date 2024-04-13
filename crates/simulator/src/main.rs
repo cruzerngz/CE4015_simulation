@@ -12,7 +12,7 @@ use logic::{EventProcessor, Shared};
 use probability::prelude::*;
 use probability::source::Source;
 use simulator_core::EventRunner;
-use std::{fs, io};
+use std::{fs, io, path::PathBuf};
 
 use crate::generator::CallEventGenerator;
 
@@ -56,6 +56,40 @@ impl rand::RngCore for DetermnisticSource {
 
 fn main() -> io::Result<()> {
     let args = args::CliArgs::parse();
+
+    let (event_log_path, perf_measure_path) = match args.common_postfix {
+        Some(post) => {
+            let mut ev_path = PathBuf::from(&args.event_log_output);
+            let mut perf_path = PathBuf::from(&args.perf_measure_output);
+
+            let pre = ev_path.file_stem();
+            let ext = ev_path.extension();
+            let pre = pre.and_then(|p| p.to_str()).unwrap_or("");
+            let mut appended = format!("{}_{}", pre, post);
+            if let Some(ext) = ext {
+                appended = format!("{}.{}", appended, ext.to_str().unwrap());
+            }
+            ev_path.set_file_name(appended);
+
+            let pre = perf_path.file_stem();
+            let ext = perf_path.extension();
+            let pre = pre.and_then(|p| p.to_str()).unwrap_or("");
+            let mut appended = format!("{}_{}", pre, post);
+            if let Some(ext) = ext {
+                appended = format!("{}.{}", appended, ext.to_str().unwrap());
+            }
+            perf_path.set_file_name(appended);
+
+            (ev_path, perf_path)
+        }
+        None => (
+            PathBuf::from(&args.event_log_output),
+            PathBuf::from(&args.perf_measure_output),
+        ),
+    };
+
+    // println!("event log path: {:#?}", event_log_path);
+    // println!("perf measure path: {:#?}", perf_measure_path);
 
     if let Some(num_gen) = args.generate {
         let generator = CallEventGenerator::new(
@@ -112,12 +146,12 @@ fn main() -> io::Result<()> {
                 perf_measures.push(avg_perf_measure);
 
                 if run_idx == 0 {
-                    run_a.write_to_file(&args.event_log_output, false)?;
+                    run_a.write_to_file(&event_log_path, false)?;
                 } else {
-                    run_a.write_to_file(&args.event_log_output, true)?;
+                    run_a.write_to_file(&event_log_path, true)?;
                 }
 
-                run_b.write_to_file(&args.event_log_output, true)?;
+                run_b.write_to_file(&event_log_path, true)?;
             }
             false => {
                 let gen_events = generator.take(args.num_events as usize).collect::<Vec<_>>();
@@ -129,14 +163,14 @@ fn main() -> io::Result<()> {
                 perf_measures.push(run.performance_measure());
 
                 match run_idx == 0 {
-                    true => run.write_to_file(&args.event_log_output, false)?,
-                    false => run.write_to_file(&args.event_log_output, true)?,
+                    true => run.write_to_file(&event_log_path, false)?,
+                    false => run.write_to_file(&event_log_path, true)?,
                 }
             }
         }
     }
 
-    let mut writer = csv::Writer::from_path(&args.perf_measure_output)?;
+    let mut writer = csv::Writer::from_path(&perf_measure_path)?;
     for perf in perf_measures {
         writer.serialize(perf)?;
     }

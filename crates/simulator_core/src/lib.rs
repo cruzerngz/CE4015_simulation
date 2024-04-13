@@ -4,6 +4,7 @@ use std::{
     fs,
     io::{self, Write},
     ops::{Add, Div},
+    path::Path,
 };
 
 pub trait EventLike {
@@ -65,7 +66,7 @@ where
     /// Write the results of the simulation as csv to a file.
     ///
     /// If set to append, headerless data is written to a file.
-    pub fn write_to_file(&self, path: &str, append: bool) -> io::Result<()>
+    pub fn write_to_file<T: AsRef<Path>>(&self, path: T, append: bool) -> io::Result<()>
     where
         P::EventStats: serde::Serialize,
     {

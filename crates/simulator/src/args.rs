@@ -30,13 +30,19 @@ pub struct CliArgs {
     #[clap(default_value = concat!(env!("CARGO_BIN_NAME"), "_perf", ".csv"))]
     pub perf_measure_output: String,
 
+    /// Common postfix for event log and performance measure output files.
+    ///
+    /// This postfix comes after any configured output file names and before the file extension.
+    #[clap(long)]
+    pub common_postfix: Option<String>,
+
     /// Generate a given number of call initiation events, without running the simulation.
     ///
     /// Used for verifying input modelling correctness.
     #[clap(long)]
     pub generate: Option<u32>,
 
-    /// Generated call initiation events will be written to this file.
+    /// Generated call initiation events will be written to this path as csv.
     #[clap(long)]
     #[clap(default_value = "call_init.csv")]
     pub generate_to: String,
