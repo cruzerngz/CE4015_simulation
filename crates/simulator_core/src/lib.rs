@@ -2,7 +2,8 @@
 
 use std::{
     fs,
-    io::{self, Write}, ops::{Add, Div},
+    io::{self, Write},
+    ops::{Add, Div},
 };
 
 pub trait EventLike {

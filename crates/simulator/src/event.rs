@@ -340,5 +340,17 @@ mod tests {
         let station = BaseStationIdx::Ten;
         let prev_station = station.previous_station(VehicleDirection::EastToWest);
         assert_eq!(prev_station, Some(BaseStationIdx::Eleven));
+
+        // generate tests to check the prevoius station for stations 2-20
+        for station in BaseStationIdx::Two as usize..=BaseStationIdx::Twenty as usize {
+            let station: BaseStationIdx = unsafe { std::mem::transmute(station) };
+            let prev_station = station.previous_station(VehicleDirection::EastToWest);
+
+            println!("curr: {:?}, prev: {:?}", station, prev_station);
+            assert_eq!(
+                prev_station,
+                Some(unsafe { std::mem::transmute(station as usize + 1) })
+            );
+        }
     }
 }

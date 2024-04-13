@@ -39,10 +39,16 @@ impl EventLike for EventProcessor {
         let next_event = self.fel.pop_front()?;
 
         println!(
-            "\n{:?} at station {:?}, dir {:?}",
-            next_event.ty, next_event.station, next_event.direction
+            "\nevent {}: {:?} at station {:?}, dir {:?}",
+            next_event.idx, next_event.ty, next_event.station, next_event.direction
         );
         println!("event time: {}", next_event.time);
+        println!("event remaining time: {}", next_event.remaining_time);
+        println!(
+            "velocity: {} km/h covers 2000m in {}s",
+            next_event.velocity,
+            2000.0 / next_event.velocity * 3.6
+        );
         println!("{}", shared);
 
         let results = match next_event.ty {
@@ -67,7 +73,7 @@ impl Display for Shared {
             .enumerate()
             .map(|(idx, s)| format!("{:02}::{:02}", idx + 1, s.available_channels))
             .collect::<Vec<_>>()
-            .join(",");
+            .join("|");
 
         write!(f, "{}", station_arr)
     }
@@ -123,6 +129,7 @@ impl EventProcessor {
                 let remaining_call_time = event.remaining_time - tt_next;
 
                 let next_ev = match event.station.next_station(event.direction) {
+                    // next station exists, enqueue handover event
                     Some(next_station) => CellEvent {
                         idx: event.idx,
                         run: event.run,
@@ -139,11 +146,13 @@ impl EventProcessor {
                         direction: event.direction,
                         // handover station refers to the station that the vehicle will connect to
                         station: next_station,
+                        // position is relative to the new handover station!
                         position: match event.direction {
-                            VehicleDirection::EastToWest => RelativeVehiclePosition::WestEnd,
-                            VehicleDirection::WestToEast => RelativeVehiclePosition::EastEnd,
+                            VehicleDirection::EastToWest => RelativeVehiclePosition::EastEnd,
+                            VehicleDirection::WestToEast => RelativeVehiclePosition::WestEnd,
                         },
                     },
+                    // next station does not exist, enqueue terminate event
                     None => CellEvent {
                         idx: event.idx,
                         run: event.run,
@@ -160,52 +169,6 @@ impl EventProcessor {
                         },
                     },
                 };
-
-                // let next_ev = match (event.station, event.direction) {
-                //     // at the end of the line, terminate regardless of remaining call duration
-                //     (BaseStationIdx::One, VehicleDirection::EastToWest)
-                //     | (BaseStationIdx::Twenty, VehicleDirection::WestToEast) => CellEvent {
-                //         idx: event.idx,
-                //         run: event.run,
-                //         time: event.time + tt_next,
-                //         ty: CellEventType::Terminate,
-                //         remaining_time: remaining_call_time,
-                //         ttn: None,
-                //         velocity: event.velocity,
-                //         direction: event.direction,
-                //         station: event.station,
-                //         position: match event.direction {
-                //             VehicleDirection::EastToWest => RelativeVehiclePosition::WestEnd,
-                //             VehicleDirection::WestToEast => RelativeVehiclePosition::EastEnd,
-                //         },
-                //     },
-
-                //     // handover
-                //     _ => CellEvent {
-                //         idx: event.idx,
-                //         run: event.run,
-                //         time: event.time + tt_next,
-                //         ty: CellEventType::Handover,
-                //         remaining_time: remaining_call_time,
-                //         ttn: calculate_ttn(
-                //             remaining_call_time,
-                //             event.position.to_float(),
-                //             event.velocity,
-                //             event.direction,
-                //         ),
-                //         velocity: event.velocity,
-                //         direction: event.direction,
-                //         // handover station refers to the station that the vehicle will connect to
-                //         station: event
-                //             .station
-                //             .next_station(event.direction)
-                //             .expect("next station must exist"),
-                //         position: match event.direction {
-                //             VehicleDirection::EastToWest => RelativeVehiclePosition::WestEnd,
-                //             VehicleDirection::WestToEast => RelativeVehiclePosition::EastEnd,
-                //         },
-                //     },
-                // };
 
                 self.insert_event(next_ev);
             }
@@ -224,6 +187,7 @@ impl EventProcessor {
                     station: event.station,
                     position: {
                         let dist = event.velocity / 3.6 * event.remaining_time;
+                        println!("dist: {}", dist);
                         let pos = match event.direction {
                             VehicleDirection::EastToWest => {
                                 RelativeVehiclePosition::Other(event.position.to_float() - dist)
@@ -265,24 +229,12 @@ impl EventProcessor {
 
         // check shared resource
 
-        let station = shared
-            .base_stations
-            .get_mut(event.station as usize)
-            .expect("station must exist");
+        let station = &mut shared.base_stations[event.station as usize];
 
-        let response = station.process_request(StationRequest::Initiate);
+        let response = station.process_request(StationRequest::Initiate, event.idx);
         println!("call init response: {:?}", response);
 
-        let ev_result = CellEventResult {
-            idx: event.idx,
-            run: event.run,
-            time: event.time,
-            ty: event.ty,
-            outcome: response,
-            direction: event.direction,
-            speed: event.velocity,
-            station: event.station,
-        };
+        let ev_result = event.to_result(response);
 
         let mut results = vec![ev_result];
 
@@ -303,12 +255,9 @@ impl EventProcessor {
     ) -> Vec<CellEventResult> {
         assert!(matches!(event.ty, CellEventType::Terminate));
 
-        let station = shared
-            .base_stations
-            .get_mut(event.station as usize)
-            .expect("station must exist");
+        let station = &mut shared.base_stations[event.station as usize];
 
-        let res = station.process_request(StationRequest::Terminate);
+        let res = station.process_request(StationRequest::Terminate, event.idx);
         assert!(matches!(res, StationResponse::Success));
 
         let result = event.to_result(res);
@@ -323,23 +272,23 @@ impl EventProcessor {
     ) -> Vec<CellEventResult> {
         assert!(matches!(event.ty, CellEventType::Handover));
 
-        let depart_station = &mut shared.base_stations[event
-            .station
-            .previous_station(event.direction)
-            .expect("previous station must exist for handovers")
-            as usize];
+        let prev_idx = event.station.previous_station(event.direction).unwrap();
+        // println!("previous station: {:?}", prev_idx);
 
-        let res = depart_station.process_request(StationRequest::HandoverDisconnect);
+        let depart_station = &mut shared.base_stations[prev_idx as usize];
+
+        println!("attempting disconnect from station {:?}", prev_idx);
+        let res = depart_station.process_request(StationRequest::HandoverDisconnect, event.idx);
         assert!(matches!(res, StationResponse::Success));
 
         let arr_station = &mut shared.base_stations[event.station as usize];
 
-        let res = arr_station.process_request(StationRequest::HandoverConnect);
+        let res = arr_station.process_request(StationRequest::HandoverConnect, event.idx);
 
         let mut results = vec![event.to_result(res)];
 
         // u are failure
-        if let StationResponse::Blocked = res {
+        if let StationResponse::Terminated = res {
             return results;
         }
 
