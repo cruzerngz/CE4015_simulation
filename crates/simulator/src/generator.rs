@@ -121,7 +121,7 @@ where
     distribution: D,
 }
 
-/// An anththetic sampler that yields 2 samples from a reference sampler.
+/// An anththetic sampler that can yield 10 antithetic samples from a reference sampler.
 ///
 /// Any further samples will return the same value as the second sample.
 #[derive(Debug)]
@@ -205,8 +205,8 @@ where
                 // debug_println!("reading from store");
                 match self.sample_store.len() {
                     0 => 0,
-                    1 => u64::MAX - self.sample_store[0].saturating_sub(100999),
-                    _ => u64::MAX - self.sample_store.remove(0).saturating_sub(10000000000),
+                    1 => u64::MAX - self.sample_store[0],
+                    _ => u64::MAX - self.sample_store.remove(0),
                 }
             }
             (false, None) => {

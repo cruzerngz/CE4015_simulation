@@ -23,7 +23,7 @@ pub struct CliArgs {
     /// Skip the first N events in the simulation when calculating performance measures
     #[clap(long)]
     #[clap(default_value_t = 0)]
-    pub warmup: u32,
+    pub warmup: usize,
 
     /// Output file for completed events in the simulation
     #[clap(long)]

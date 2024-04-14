@@ -59,8 +59,10 @@ where
     }
 
     /// Returns the performance measure for the simulation run.
-    pub fn performance_measure(&mut self) -> P::PerformanceMeasure {
-        P::calculate_performance_measure(&self.results)
+    ///
+    /// Skips the first set of events as warmup.
+    pub fn performance_measure(&mut self, skip: usize) -> P::PerformanceMeasure {
+        P::calculate_performance_measure(&self.results[skip..])
     }
 
     /// Returns the results of the simulation run, comsuming the runner.

@@ -7,7 +7,7 @@ mod generator;
 mod logic;
 
 use clap::Parser;
-use event::{CellEventResult, PerfMeasure};
+use event::PerfMeasure;
 use logic::{EventProcessor, Shared};
 use probability::prelude::*;
 use probability::source::Source;
@@ -94,7 +94,7 @@ fn main() -> io::Result<()> {
         ),
     };
 
-    // let (handle, send_chan) = csv_writer_task(event_log_path.clone());
+    let (handle, send_chan) = progress_task();
 
     // println!("event log path: {:#?}", event_log_path);
     // println!("perf measure path: {:#?}", perf_measure_path);
@@ -160,10 +160,13 @@ fn main() -> io::Result<()> {
                     //     "#{} simulation complete, calculating perf measure ",
                     //     run_idx
                     // );
-                    let avg_perf_measure =
-                        (run_a.performance_measure() + run_b.performance_measure()) / 2.0;
+                    let avg_perf_measure = (run_a.performance_measure(args.warmup)
+                        + run_b.performance_measure(args.warmup))
+                        / 2.0;
 
                     perf_measures.lock().unwrap().push(avg_perf_measure);
+
+                    send_chan.send(()).unwrap();
 
                     if args.skip_event_log {
                         return;
@@ -193,7 +196,9 @@ fn main() -> io::Result<()> {
                     perf_measures
                         .lock()
                         .unwrap()
-                        .push(run.performance_measure());
+                        .push(run.performance_measure(args.warmup));
+
+                    send_chan.send(()).unwrap();
 
                     if args.skip_event_log {
                         return;
@@ -213,8 +218,8 @@ fn main() -> io::Result<()> {
             // println!("#{} ending run", run_idx);
         });
 
-    // drop(send_chan);
-    // handle.join().unwrap();
+    drop(send_chan);
+    handle.join().unwrap();
 
     let mut writer = csv::Writer::from_path(&perf_measure_path)?;
     for perf in perf_measures.lock().unwrap().iter() {
@@ -230,28 +235,17 @@ fn main() -> io::Result<()> {
 ///
 /// Turns out funneling all write ops to a single thread is slow
 #[allow(unused)]
-fn csv_writer_task<T: Into<PathBuf> + Send + 'static>(
-    path: T,
-) -> (
-    thread::JoinHandle<()>,
-    mpsc::SyncSender<Vec<CellEventResult>>,
-) {
+fn progress_task() -> (thread::JoinHandle<()>, mpsc::SyncSender<()>) {
     let (send, recv) = mpsc::sync_channel(10);
 
     let handle = thread::spawn(move || {
-        let mut writer = csv::Writer::from_path(path.into()).expect("failed to open file");
-        // let mut count = 0;
+        let mut count = 0;
 
+        println!();
         while let Ok(data) = recv.recv() {
-            // count += 1;
-            // println!("#{} run received", count);
-
-            for ev in data {
-                writer.serialize(ev).expect("failed to write to file");
-            }
+            count += 1;
+            print!("\rcompleted: {}", count);
         }
-
-        writer.flush().expect("failed to flush csv writer");
     });
 
     (handle, send)

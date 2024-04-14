@@ -75,6 +75,9 @@ pub struct CellEventResult {
     /// Base station involved in the event
     #[serde(serialize_with = "serialize_base_station")]
     pub station: BaseStationIdx,
+
+    /// Number of free channels in the station after the event
+    pub station_free_channels: usize,
 }
 
 /// Performance measure for sim
@@ -220,7 +223,7 @@ impl RelativeVehiclePosition {
 }
 
 impl CellEvent {
-    pub fn to_result(&self, outcome: StationResponse) -> CellEventResult {
+    pub fn to_result(&self, outcome: StationResponse, free_channels: usize) -> CellEventResult {
         CellEventResult {
             idx: self.idx,
             run: self.run,
@@ -230,6 +233,7 @@ impl CellEvent {
             direction: self.direction,
             speed: self.velocity,
             station: self.station,
+            station_free_channels: free_channels,
         }
     }
 }

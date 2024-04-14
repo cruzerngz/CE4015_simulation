@@ -5,10 +5,14 @@ use std::{collections::VecDeque, fmt::Display};
 use simulator_core::EventLike;
 
 use crate::{
-    base_station::{BaseStation, StationRequest, StationResponse}, debug_println, event::{
-         CellEvent, CellEventResult, CellEventType, PerfMeasure,
-        RelativeVehiclePosition, VehicleDirection,
-    }, generator::{calculate_ttn, VEHICLE_LOC_DIST}, FloatingPoint
+    base_station::{BaseStation, StationRequest, StationResponse},
+    debug_println,
+    event::{
+        CellEvent, CellEventResult, CellEventType, PerfMeasure, RelativeVehiclePosition,
+        VehicleDirection,
+    },
+    generator::{calculate_ttn, VEHICLE_LOC_DIST},
+    FloatingPoint,
 };
 
 /// Process events in the simulation
@@ -39,7 +43,10 @@ impl EventLike for EventProcessor {
 
         debug_println!(
             "\nevent {}: {:?} at station {:?}, dir {:?}",
-            next_event.idx, next_event.ty, next_event.station, next_event.direction
+            next_event.idx,
+            next_event.ty,
+            next_event.station,
+            next_event.direction
         );
         debug_println!("event time: {}", next_event.time);
         debug_println!("event remaining time: {}", next_event.remaining_time);
@@ -256,7 +263,7 @@ impl EventProcessor {
         let response = station.process_request(StationRequest::Initiate, event.idx);
         debug_println!("call init response: {:?}", response);
 
-        let ev_result = event.to_result(response);
+        let ev_result = event.to_result(response, station.available_channels);
 
         let mut results = vec![ev_result];
 
@@ -282,7 +289,7 @@ impl EventProcessor {
         let res = station.process_request(StationRequest::Terminate, event.idx);
         assert!(matches!(res, StationResponse::Success));
 
-        let result = event.to_result(res);
+        let result = event.to_result(res, station.available_channels);
 
         vec![result]
     }
@@ -307,7 +314,7 @@ impl EventProcessor {
 
         let res = arr_station.process_request(StationRequest::HandoverConnect, event.idx);
 
-        let mut results = vec![event.to_result(res)];
+        let mut results = vec![event.to_result(res, arr_station.available_channels)];
 
         // u are failure
         if let StationResponse::Terminated = res {
