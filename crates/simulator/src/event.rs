@@ -1,9 +1,6 @@
 //! Event definition for the simulator
 
-use std::{
-    iter::once_with,
-    ops::{Add, Div},
-};
+use std::ops::{Add, Div};
 
 use serde::Serialize;
 
@@ -122,6 +119,7 @@ pub enum VehicleDirection {
 /// Type safety boi
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(usize)]
+#[allow(dead_code)] //, reason="Enums are constructed by transmuting from usize")]
 pub enum BaseStationIdx {
     One = 0,
     Two = 1,
@@ -170,12 +168,6 @@ pub enum RelativeVehiclePosition {
 
 impl PartialEq for CellEvent {
     fn eq(&self, other: &Self) -> bool {
-        // match (self.ttn, other.ttn) {
-        //     (Some(ttn1), Some(ttn2)) => ttn1 == ttn2,
-        //     (None, None) => true,
-        //     _ => false,
-        // };
-
         self.time == other.time
     }
 }

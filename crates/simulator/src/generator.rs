@@ -1,18 +1,18 @@
 //! Random variable generators, their parameters and other sampling stuff are defined here.
 
-use std::path::Iter;
-
 use probability::{
-    distribution::{self, Distribution, Inverse, Sample},
-    sampler::Independent,
-    source::{self, Source},
+    distribution::{self, Distribution, Sample},
+    source::Source,
 };
 
 use crate::{
-    debug_println,
     event::{BaseStationIdx, CellEvent, CellEventType, RelativeVehiclePosition, VehicleDirection},
     FloatingPoint,
 };
+
+/// Number of samples to cache for antithetic sampling.
+/// Required as gaussian distributions require more than one sample call.
+pub const ANTITHETIC_PREPARE: usize = 10;
 
 /// Average velocity in km/h.
 pub const VEHICLE_VELOCITY_MEAN: FloatingPoint = 120.072;
@@ -82,6 +82,7 @@ pub struct AntitheticCallEventGenerator<S>
 where
     S: Source,
 {
+    #[allow(dead_code)]
     source: S,
 
     time_a: FloatingPoint,
@@ -234,7 +235,7 @@ where
     D: Sample + Clone,
     S: Source + Clone,
 {
-    pub fn new(distribution: D, mut source: S) -> Self {
+    pub fn new(distribution: D, source: S) -> Self {
         Self {
             source,
             distribution,
@@ -362,12 +363,12 @@ where
         let (call_dur_a, call_dur_b) = self.call_duration.clone().take(1).last()?;
         // debug_println!("generating inter arrival");
         let (inter_arr_a, inter_arr_b) = self.call_inter_arrival.clone().take(1).last()?;
-        debug_println!("generating cell tower");
+        // debug_println!("generating cell tower");
         let (cell_tower_a, cell_tower_b) = self.cell_tower.clone().take(1).last()?;
-        debug_println!("generating vehicle velocity");
+        // debug_println!("generating vehicle velocity");
         let (vehicle_velocity_a, vehicle_velocity_b) =
             self.vehicle_velocity.clone().take(1).last()?;
-        debug_println!("generating vehicle position");
+        // debug_println!("generating vehicle position");
         let (vehicle_position_a, vehicle_position_b) =
             self.vehicle_position.clone().take(1).last()?;
         // debug_println!("generating vehicle direction");
@@ -427,7 +428,7 @@ where
         // debug_println!("creating antithetic sampler");
         let mut anti_sampler = AntitheticSampler::new(&mut self.source);
 
-        anti_sampler.prepare(5);
+        anti_sampler.prepare(ANTITHETIC_PREPARE);
         // debug_println!("sampling A");
         let sample_a = self.distribution.sample(&mut anti_sampler);
 
@@ -523,11 +524,12 @@ where
 }
 
 #[cfg(test)]
+#[allow(unused)]
 mod tests {
 
-    use probability::distribution::Uniform;
+    use probability::{distribution::Uniform, source};
 
-    use crate::debug_println;
+    use crate::{debug_println, RngSource};
 
     use super::*;
 
@@ -541,7 +543,7 @@ mod tests {
 
     #[test]
     fn test_antithetic_iter() {
-        let mut gen = SingleVariateIterator::new(Uniform::new(0.0, 10.0), source::default(0));
+        let gen = SingleVariateIterator::new(Uniform::new(0.0, 10.0), source::default(0));
 
         for sample in gen.clone().take(10) {
             debug_println!("{:?}", sample);
@@ -575,7 +577,7 @@ mod tests {
     /// Gaussian generation is giving problems when generating antithetic pairs
     #[test]
     fn test_antihetic_gaussian_iter() {
-        let mut gen = SingleVariateIterator::new(
+        let gen = SingleVariateIterator::new(
             distribution::Gaussian::new(
                 VEHICLE_VELOCITY_MEAN as f64,
                 VEHICLE_VELOCITY_STDDEV as f64,
@@ -629,6 +631,25 @@ mod tests {
             VehicleDirection::EastToWest,
         );
         assert_eq!(ttn, Some(72.0));
+    }
+
+    #[test]
+    fn test_call_event_gen() {
+        let generator = CallEventGenerator::new(
+            1,
+            RngSource(rand::rngs::OsRng),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+
+        let num_events = 100000;
+        println!("generating {} events", num_events);
+        let call_events = generator.antithetic().take(num_events).collect::<Vec<_>>();
+        println!("{} events generated", num_events);
     }
 
     #[test]

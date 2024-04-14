@@ -1,4 +1,4 @@
-#![allow(unused)]
+// #![allow(unused)]
 
 mod args;
 mod base_station;
@@ -14,8 +14,8 @@ use probability::source::Source;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use simulator_core::EventRunner;
 use std::{
-    fs, io,
-    path::{Path, PathBuf},
+    io,
+    path::PathBuf,
     sync::{mpsc, Arc, Mutex},
     thread,
 };
@@ -50,11 +50,11 @@ impl rand::RngCore for DetermnisticSource {
         self.0
     }
 
-    fn fill_bytes(&mut self, dest: &mut [u8]) {
+    fn fill_bytes(&mut self, _: &mut [u8]) {
         // self.0 = self.0.wrapping_add(*dest.get(0).unwrap_or(&0) as u64);
     }
 
-    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand::Error> {
+    fn try_fill_bytes(&mut self, _: &mut [u8]) -> Result<(), rand::Error> {
         // self.0 = self.0.wrapping_add(*dest.get(0).unwrap_or(&0) as u64);
         Ok(())
     }
@@ -94,13 +94,15 @@ fn main() -> io::Result<()> {
         ),
     };
 
+    let (handle, send_chan) = csv_writer_task(event_log_path.clone());
+
     // println!("event log path: {:#?}", event_log_path);
     // println!("perf measure path: {:#?}", perf_measure_path);
 
     if let Some(num_gen) = args.generate {
         let generator = CallEventGenerator::new(
             1,
-            RngSource(DetermnisticSource(1)),
+            RngSource(rand::rngs::OsRng),
             None,
             None,
             None,
@@ -114,17 +116,19 @@ fn main() -> io::Result<()> {
     }
 
     let shared_resources = Shared::new(args.reserved_handover_channels as usize);
-    debug_println!("base stations: {:#?}", shared_resources);
+    // debug_println!("base stations: {:#?}", shared_resources);
 
-    let mut perf_measures: Arc<Mutex<Vec<PerfMeasure>>> = Arc::new(Mutex::new(Vec::new()));
+    let perf_measures: Arc<Mutex<Vec<PerfMeasure>>> = Arc::new(Mutex::new(Vec::new()));
 
     (0..args.num_runs as usize)
         .into_par_iter()
         .for_each(|run_idx| {
+            // println!("#{} starting run", run_idx);
+
             // new generator for each iteration
             let generator = CallEventGenerator::new(
                 run_idx + 1,
-                RngSource(rand::rngs::ThreadRng::default()),
+                RngSource(rand::rngs::OsRng),
                 None,
                 None,
                 None,
@@ -135,18 +139,11 @@ fn main() -> io::Result<()> {
 
             match args.antithetic {
                 true => {
-                    debug_println!("generating antithetic events for run {}", run_idx);
+                    // println!("#{} generating antithetic events", run_idx);
                     let (events_a, events_b): (Vec<_>, Vec<_>) = generator
                         .antithetic()
                         .take(args.num_events as usize)
                         .unzip();
-
-                    // let pairs = generator
-                    //     .antithetic()
-                    //     .take(args.num_events as usize)
-                    //     .collect::<Vec<_>>();
-
-                    // return;
 
                     let sim_a = EventProcessor::new(run_idx + 1, events_a);
                     let sim_b = EventProcessor::new(run_idx + 1, events_b);
@@ -154,28 +151,22 @@ fn main() -> io::Result<()> {
                     let mut run_a = EventRunner::init(sim_a, Some(shared_resources.clone()));
                     let mut run_b = EventRunner::init(sim_b, Some(shared_resources.clone()));
 
-                    debug_println!("starting simulation run for {}", run_idx);
+                    // println!("#{} starting simulation", run_idx);
 
                     run_a.run();
                     run_b.run();
+
+                    // println!(
+                    //     "#{} simulation complete, calculating perf measure ",
+                    //     run_idx
+                    // );
                     let avg_perf_measure =
                         (run_a.performance_measure() + run_b.performance_measure()) / 2.0;
 
                     perf_measures.lock().unwrap().push(avg_perf_measure);
 
-                    if run_idx == 0 {
-                        run_a
-                            .write_to_file(&event_log_path, false)
-                            .expect("failed to write to file");
-                    } else {
-                        run_a
-                            .write_to_file(&event_log_path, true)
-                            .expect("failed to write to file");
-                    }
-
-                    run_b
-                        .write_to_file(&event_log_path, true)
-                        .expect("failed to write to file");
+                    send_chan.send(run_a.into_results()).unwrap();
+                    send_chan.send(run_b.into_results()).unwrap();
                 }
                 false => {
                     let gen_events = generator.take(args.num_events as usize).collect::<Vec<_>>();
@@ -189,75 +180,15 @@ fn main() -> io::Result<()> {
                         .unwrap()
                         .push(run.performance_measure());
 
-                    match run_idx == 0 {
-                        true => run
-                            .write_to_file(&event_log_path, false)
-                            .expect("failed to write to file"),
-                        false => run
-                            .write_to_file(&event_log_path, true)
-                            .expect("failed to write to file"),
-                    }
+                    send_chan.send(run.into_results()).unwrap();
                 }
             }
+
+            // println!("#{} ending run", run_idx);
         });
 
-    // for run_idx in 0..args.num_runs as usize {
-    //     // new generator for each iteration
-    //     let generator = CallEventGenerator::new(
-    //         run_idx + 1,
-    //         RngSource(rand::rngs::ThreadRng::default()),
-    //         None,
-    //         None,
-    //         None,
-    //         None,
-    //         None,
-    //         None,
-    //     );
-
-    //     match args.antithetic {
-    //         true => {
-    //             let (events_a, events_b): (Vec<_>, Vec<_>) = generator
-    //                 .antithetic()
-    //                 .take(args.num_events as usize)
-    //                 .unzip();
-
-    //             let sim_a = EventProcessor::new(run_idx + 1, events_a);
-    //             let sim_b = EventProcessor::new(run_idx + 1, events_b);
-
-    //             let mut run_a = EventRunner::init(sim_a, Some(shared_resources.clone()));
-    //             let mut run_b = EventRunner::init(sim_b, Some(shared_resources.clone()));
-
-    //             run_a.run();
-    //             run_b.run();
-    //             let avg_perf_measure =
-    //                 (run_a.performance_measure() + run_b.performance_measure()) / 2.0;
-
-    //             perf_measures.push(avg_perf_measure);
-
-    //             if run_idx == 0 {
-    //                 run_a.write_to_file(&event_log_path, false)?;
-    //             } else {
-    //                 run_a.write_to_file(&event_log_path, true)?;
-    //             }
-
-    //             run_b.write_to_file(&event_log_path, true)?;
-    //         }
-    //         false => {
-    //             let gen_events = generator.take(args.num_events as usize).collect::<Vec<_>>();
-
-    //             let sim = EventProcessor::new(run_idx + 1, gen_events);
-    //             let mut run = EventRunner::init(sim, Some(shared_resources.clone()));
-
-    //             run.run();
-    //             perf_measures.push(run.performance_measure());
-
-    //             match run_idx == 0 {
-    //                 true => run.write_to_file(&event_log_path, false)?,
-    //                 false => run.write_to_file(&event_log_path, true)?,
-    //             }
-    //         }
-    //     }
-    // }
+    drop(send_chan);
+    handle.join().unwrap();
 
     let mut writer = csv::Writer::from_path(&perf_measure_path)?;
     for perf in perf_measures.lock().unwrap().iter() {
@@ -272,13 +203,17 @@ fn main() -> io::Result<()> {
 /// Run the csv writer in a separate task
 fn csv_writer_task<T: Into<PathBuf> + Send + 'static>(
     path: T,
-) -> mpsc::Sender<Vec<CellEventResult>> {
+) -> (thread::JoinHandle<()>, mpsc::Sender<Vec<CellEventResult>>) {
     let (send, recv) = mpsc::channel();
 
-    let _ = thread::spawn(move || {
+    let handle = thread::spawn(move || {
         let mut writer = csv::Writer::from_path(path.into()).expect("failed to open file");
+        // let mut count = 0;
 
         while let Ok(data) = recv.recv() {
+            // count += 1;
+            // println!("#{} run received", count);
+
             for ev in data {
                 writer.serialize(ev).expect("failed to write to file");
             }
@@ -287,7 +222,7 @@ fn csv_writer_task<T: Into<PathBuf> + Send + 'static>(
         writer.flush().expect("failed to flush csv writer");
     });
 
-    send
+    (handle, send)
 }
 
 fn generate_num_to_file<S>(
