@@ -1,0 +1,4 @@
+*.svg
+
+# csv files to commit
+!simulator_perf_a_r*_r100000*.csv

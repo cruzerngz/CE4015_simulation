@@ -1,0 +1,12 @@
+@article{JSSv005i08,
+  title    = {The Ziggurat Method for Generating Random Variables},
+  volume   = {5},
+  url      = {https://www.jstatsoft.org/index.php/jss/article/view/v005i08},
+  doi      = {10.18637/jss.v005.i08},
+  abstract = {We provide a new version of our ziggurat method for generating a random variable from a given decreasing density. It is faster and simpler than the original, and will produce, for example, normal or exponential variates at the rate of 15 million per second with a C version on a 400MHz PC. It uses two tables, integers k&amp;lt;sub&amp;gt;i&amp;lt;/sub&amp;gt;, and reals w&amp;lt;sub&amp;gt;i&amp;lt;/sub&amp;gt;. Some 99% of the time, the required x is produced by: Generate a random 32-bit integer j and let i be the index formed from the rightmost 8 bits of j. If j &amp;lt; k, return x = j x w&amp;lt;sub&amp;gt;i&amp;lt;/sub&amp;gt;. We illustrate with C code that provides for inline generation of both normal and exponential variables, with a short procedure for settting up the necessary tables.},
+  number   = {8},
+  journal  = {Journal of Statistical Software},
+  author   = {Marsaglia, George and Tsang, Wai Wan},
+  year     = {2000},
+  pages    = {1–7}
+}
