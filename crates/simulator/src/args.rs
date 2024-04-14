@@ -20,6 +20,11 @@ pub struct CliArgs {
     #[clap(long)]
     pub antithetic: bool,
 
+    /// Skip the first N events in the simulation when calculating performance measures
+    #[clap(long)]
+    #[clap(default_value_t = 0)]
+    pub warmup: u32,
+
     /// Output file for completed events in the simulation
     #[clap(long)]
     #[clap(default_value = concat!(env!("CARGO_BIN_NAME"), "_events", ".csv"))]
@@ -35,6 +40,10 @@ pub struct CliArgs {
     /// This postfix comes after any configured output file names and before the file extension.
     #[clap(long)]
     pub common_postfix: Option<String>,
+
+    /// Skip writing the event log to file. For large simulations, this can save a lot of time and data.
+    #[clap(long)]
+    pub skip_event_log: bool,
 
     /// Generate a given number of call initiation events, without running the simulation.
     ///

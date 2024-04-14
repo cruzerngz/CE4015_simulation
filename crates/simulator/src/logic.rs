@@ -6,7 +6,7 @@ use simulator_core::EventLike;
 
 use crate::{
     base_station::{BaseStation, StationRequest, StationResponse}, debug_println, event::{
-        BaseStationIdx, CellEvent, CellEventResult, CellEventType, PerfMeasure,
+         CellEvent, CellEventResult, CellEventType, PerfMeasure,
         RelativeVehiclePosition, VehicleDirection,
     }, generator::{calculate_ttn, VEHICLE_LOC_DIST}, FloatingPoint
 };
@@ -14,6 +14,7 @@ use crate::{
 /// Process events in the simulation
 #[derive(Debug)]
 pub struct EventProcessor {
+    #[allow(dead_code)]
     run_num: usize,
     /// Future events to process
     fel: VecDeque<CellEvent>,
@@ -104,7 +105,7 @@ impl Shared {
     pub fn new(handover_reserve: usize) -> Self {
         Self {
             base_stations: {
-                core::array::from_fn(|idx| BaseStation::new(10, Some(handover_reserve)))
+                core::array::from_fn(|_idx| BaseStation::new(10, Some(handover_reserve)))
             },
         }
     }
@@ -322,7 +323,7 @@ impl EventProcessor {
 
 #[cfg(test)]
 mod tests {
-    use crate::FloatingPoint;
+    use crate::{event::BaseStationIdx, FloatingPoint};
 
     use super::*;
 

@@ -94,7 +94,7 @@ fn main() -> io::Result<()> {
         ),
     };
 
-    let (handle, send_chan) = csv_writer_task(event_log_path.clone());
+    // let (handle, send_chan) = csv_writer_task(event_log_path.clone());
 
     // println!("event log path: {:#?}", event_log_path);
     // println!("perf measure path: {:#?}", perf_measure_path);
@@ -165,8 +165,23 @@ fn main() -> io::Result<()> {
 
                     perf_measures.lock().unwrap().push(avg_perf_measure);
 
-                    send_chan.send(run_a.into_results()).unwrap();
-                    send_chan.send(run_b.into_results()).unwrap();
+                    if args.skip_event_log {
+                        return;
+                    }
+
+                    if run_idx == 0 {
+                        run_a
+                            .write_to_file(&event_log_path, false)
+                            .expect("failed to write to file");
+                    } else {
+                        run_a
+                            .write_to_file(&event_log_path, true)
+                            .expect("failed to write to file");
+                    }
+
+                    run_b
+                        .write_to_file(&event_log_path, true)
+                        .expect("failed to write to file");
                 }
                 false => {
                     let gen_events = generator.take(args.num_events as usize).collect::<Vec<_>>();
@@ -180,15 +195,26 @@ fn main() -> io::Result<()> {
                         .unwrap()
                         .push(run.performance_measure());
 
-                    send_chan.send(run.into_results()).unwrap();
+                    if args.skip_event_log {
+                        return;
+                    }
+
+                    match run_idx == 0 {
+                        true => run
+                            .write_to_file(&event_log_path, false)
+                            .expect("failed to write to file"),
+                        false => run
+                            .write_to_file(&event_log_path, true)
+                            .expect("failed to write to file"),
+                    }
                 }
             }
 
             // println!("#{} ending run", run_idx);
         });
 
-    drop(send_chan);
-    handle.join().unwrap();
+    // drop(send_chan);
+    // handle.join().unwrap();
 
     let mut writer = csv::Writer::from_path(&perf_measure_path)?;
     for perf in perf_measures.lock().unwrap().iter() {
@@ -201,10 +227,16 @@ fn main() -> io::Result<()> {
 }
 
 /// Run the csv writer in a separate task
+///
+/// Turns out funneling all write ops to a single thread is slow
+#[allow(unused)]
 fn csv_writer_task<T: Into<PathBuf> + Send + 'static>(
     path: T,
-) -> (thread::JoinHandle<()>, mpsc::Sender<Vec<CellEventResult>>) {
-    let (send, recv) = mpsc::channel();
+) -> (
+    thread::JoinHandle<()>,
+    mpsc::SyncSender<Vec<CellEventResult>>,
+) {
+    let (send, recv) = mpsc::sync_channel(10);
 
     let handle = thread::spawn(move || {
         let mut writer = csv::Writer::from_path(path.into()).expect("failed to open file");
