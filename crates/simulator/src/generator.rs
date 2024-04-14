@@ -9,6 +9,7 @@ use probability::{
 };
 
 use crate::{
+    debug_println,
     event::{BaseStationIdx, CellEvent, CellEventType, RelativeVehiclePosition, VehicleDirection},
     FloatingPoint,
 };
@@ -128,7 +129,11 @@ where
     S: Source,
 {
     source: &'s mut S,
-    first_drawn: Option<u64>,
+    // first_drawn: Option<u64>,
+    /// Current index of the sample cache
+    cached: Option<usize>,
+    drain: bool,
+    sample_store: Vec<u64>,
 }
 
 impl Distribution for ExponentialLoc {
@@ -164,8 +169,28 @@ where
     pub fn new(source: &'s mut S) -> Self {
         Self {
             source,
-            first_drawn: None,
+            cached: None,
+            drain: false,
+            sample_store: Vec::new(),
         }
+    }
+
+    /// Pre-generate samples from the source
+    pub fn prepare(&mut self, num: usize) {
+        self.cached = Some(0);
+        for _ in 0..num {
+            self.sample_store.push(self.source.read_u64());
+        }
+    }
+
+    // /// Accumulate and return samples from the source
+    // pub fn accumulate(&mut self) {
+    //     self.drain = false;
+    // }
+
+    /// Take samples that have been accumulated instead of the source
+    pub fn drain(&mut self) {
+        self.drain = true;
     }
 }
 
@@ -174,12 +199,31 @@ where
     S: Source,
 {
     fn read_u64(&mut self) -> u64 {
-        match self.first_drawn {
-            Some(first) => u64::MAX - first,
-            None => {
-                let first = self.source.read_u64();
-                self.first_drawn = Some(first);
-                first
+        match (self.drain, &mut self.cached) {
+            (true, _) => {
+                // debug_println!("reading from store");
+                match self.sample_store.len() {
+                    0 => 0,
+                    1 => u64::MAX - self.sample_store[0].saturating_sub(100999),
+                    _ => u64::MAX - self.sample_store.remove(0).saturating_sub(10000000000),
+                }
+            }
+            (false, None) => {
+                // debug_println!("reading from source");
+                let sample = self.source.read_u64();
+                self.sample_store.push(sample);
+                sample
+            }
+            (false, Some(pos)) => {
+                // debug_println!("reading from cache");
+                match self.sample_store.len() > *pos {
+                    true => {
+                        let sample = self.sample_store[*pos];
+                        *pos += 1;
+                        sample
+                    }
+                    false => self.sample_store[self.sample_store.len() - 1],
+                }
             }
         }
     }
@@ -314,17 +358,25 @@ where
     type Item = (CellEvent, CellEvent);
 
     fn next(&mut self) -> Option<Self::Item> {
+        // debug_println!("generating call duration");
         let (call_dur_a, call_dur_b) = self.call_duration.clone().take(1).last()?;
+        // debug_println!("generating inter arrival");
         let (inter_arr_a, inter_arr_b) = self.call_inter_arrival.clone().take(1).last()?;
+        debug_println!("generating cell tower");
         let (cell_tower_a, cell_tower_b) = self.cell_tower.clone().take(1).last()?;
+        debug_println!("generating vehicle velocity");
         let (vehicle_velocity_a, vehicle_velocity_b) =
             self.vehicle_velocity.clone().take(1).last()?;
+        debug_println!("generating vehicle position");
         let (vehicle_position_a, vehicle_position_b) =
             self.vehicle_position.clone().take(1).last()?;
+        // debug_println!("generating vehicle direction");
         let (vehicle_direction_a, vehicle_direction_b) =
             self.vehicle_direction.clone().take(1).last()?;
 
         self.count += 1;
+        self.time_a += inter_arr_a as FloatingPoint;
+        self.time_b += inter_arr_b as FloatingPoint;
 
         let ev_a = cell_event_from_random_variables(
             self.count,
@@ -367,16 +419,23 @@ where
 impl<D, S> Iterator for AntitheticIterator<D, S>
 where
     D: Sample,
-    S: Source + Clone,
+    S: Source,
 {
     type Item = (D::Value, D::Value);
 
     fn next(&mut self) -> Option<Self::Item> {
+        // debug_println!("creating antithetic sampler");
         let mut anti_sampler = AntitheticSampler::new(&mut self.source);
 
+        anti_sampler.prepare(5);
+        // debug_println!("sampling A");
         let sample_a = self.distribution.sample(&mut anti_sampler);
-        let sample_b = self.distribution.sample(&mut anti_sampler);
 
+        anti_sampler.drain();
+        // debug_println!("sampling B");
+        let sample_b: <D as Distribution>::Value = self.distribution.sample(&mut anti_sampler);
+
+        // debug_println!("returning samples");
         Some((sample_a, sample_b))
     }
 }
@@ -511,6 +570,40 @@ mod tests {
             .collect::<Vec<_>>();
 
         debug_println!("{:#?}", v);
+    }
+
+    /// Gaussian generation is giving problems when generating antithetic pairs
+    #[test]
+    fn test_antihetic_gaussian_iter() {
+        let mut gen = SingleVariateIterator::new(
+            distribution::Gaussian::new(
+                VEHICLE_VELOCITY_MEAN as f64,
+                VEHICLE_VELOCITY_STDDEV as f64,
+            ),
+            source::default(10),
+        );
+
+        println!("creating generator iterator");
+        let mut antithetic = gen.antithetic_iter();
+
+        println!("iterating");
+
+        for _ in 0..100 {
+            let v = antithetic.next().unwrap();
+            println!("next pair: {:?}", v);
+        }
+
+        // let v = antithetic
+        //     // .clone()
+        //     .take(10)
+        //     .enumerate()
+        //     .map(|(idx, (a, b))| {
+        //         println!("iter {}", idx);
+        //         (a + b) / 2.0
+        //     })
+        //     .collect::<Vec<_>>();
+
+        // debug_println!("{:#?}", v);
     }
 
     #[test]

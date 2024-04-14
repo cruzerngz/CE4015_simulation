@@ -63,6 +63,11 @@ where
         P::calculate_performance_measure(&self.results)
     }
 
+    /// Returns the results of the simulation run, comsuming the runner.
+    pub fn into_results(self) -> Vec<P::EventStats> {
+        self.results
+    }
+
     /// Write the results of the simulation as csv to a file.
     ///
     /// If set to append, headerless data is written to a file.

@@ -7,7 +7,7 @@ mod generator;
 mod logic;
 
 use clap::Parser;
-use event::PerfMeasure;
+use event::{CellEventResult, PerfMeasure};
 use logic::{EventProcessor, Shared};
 use probability::prelude::*;
 use probability::source::Source;
@@ -15,8 +15,9 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use simulator_core::EventRunner;
 use std::{
     fs, io,
-    path::PathBuf,
-    sync::{Arc, Mutex},
+    path::{Path, PathBuf},
+    sync::{mpsc, Arc, Mutex},
+    thread,
 };
 
 use crate::generator::CallEventGenerator;
@@ -134,16 +135,26 @@ fn main() -> io::Result<()> {
 
             match args.antithetic {
                 true => {
+                    debug_println!("generating antithetic events for run {}", run_idx);
                     let (events_a, events_b): (Vec<_>, Vec<_>) = generator
                         .antithetic()
                         .take(args.num_events as usize)
                         .unzip();
+
+                    // let pairs = generator
+                    //     .antithetic()
+                    //     .take(args.num_events as usize)
+                    //     .collect::<Vec<_>>();
+
+                    // return;
 
                     let sim_a = EventProcessor::new(run_idx + 1, events_a);
                     let sim_b = EventProcessor::new(run_idx + 1, events_b);
 
                     let mut run_a = EventRunner::init(sim_a, Some(shared_resources.clone()));
                     let mut run_b = EventRunner::init(sim_b, Some(shared_resources.clone()));
+
+                    debug_println!("starting simulation run for {}", run_idx);
 
                     run_a.run();
                     run_b.run();
@@ -256,6 +267,27 @@ fn main() -> io::Result<()> {
     writer.flush()?;
 
     Ok(())
+}
+
+/// Run the csv writer in a separate task
+fn csv_writer_task<T: Into<PathBuf> + Send + 'static>(
+    path: T,
+) -> mpsc::Sender<Vec<CellEventResult>> {
+    let (send, recv) = mpsc::channel();
+
+    let _ = thread::spawn(move || {
+        let mut writer = csv::Writer::from_path(path.into()).expect("failed to open file");
+
+        while let Ok(data) = recv.recv() {
+            for ev in data {
+                writer.serialize(ev).expect("failed to write to file");
+            }
+        }
+
+        writer.flush().expect("failed to flush csv writer");
+    });
+
+    send
 }
 
 fn generate_num_to_file<S>(

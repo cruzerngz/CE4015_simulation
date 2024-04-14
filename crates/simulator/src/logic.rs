@@ -80,7 +80,7 @@ impl EventLike for EventProcessor {
         PerfMeasure {
             blocked_calls: num_blocked_calls as FloatingPoint
                 / num_initiated_calls as FloatingPoint,
-            dropped_cals: num_terminated_calls as FloatingPoint
+            dropped_calls: num_terminated_calls as FloatingPoint
                 / num_initiated_calls as FloatingPoint,
         }
     }

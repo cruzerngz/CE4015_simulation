@@ -87,7 +87,7 @@ pub struct PerfMeasure {
     pub blocked_calls: FloatingPoint,
 
     /// Percentage of dropped calls
-    pub dropped_cals: FloatingPoint,
+    pub dropped_calls: FloatingPoint,
 }
 
 /// Inner event type
@@ -199,7 +199,7 @@ impl Add<PerfMeasure> for PerfMeasure {
     fn add(self, rhs: PerfMeasure) -> Self::Output {
         Self {
             blocked_calls: self.blocked_calls + rhs.blocked_calls,
-            dropped_cals: self.dropped_cals + rhs.dropped_cals,
+            dropped_calls: self.dropped_calls + rhs.dropped_calls,
         }
     }
 }
@@ -210,7 +210,7 @@ impl Div<f64> for PerfMeasure {
     fn div(self, rhs: f64) -> Self::Output {
         Self {
             blocked_calls: self.blocked_calls / rhs as FloatingPoint,
-            dropped_cals: self.dropped_cals / rhs as FloatingPoint,
+            dropped_calls: self.dropped_calls / rhs as FloatingPoint,
         }
     }
 }
