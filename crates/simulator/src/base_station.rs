@@ -167,7 +167,8 @@ impl BaseStation {
 
         debug_println!(
             "station resp: {:?}, remaining channels: {}",
-            resp, self.available_channels
+            resp,
+            self.available_channels
         );
 
         resp
