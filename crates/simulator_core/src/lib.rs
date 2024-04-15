@@ -1,4 +1,4 @@
-//! Core functionality for running simulations.
+//! Core functionality for running event-based simulations.
 
 use std::{
     fs,
@@ -12,8 +12,12 @@ use probability::{
     source::Source,
 };
 
+/// Event processing logic implements this trait.
 pub trait EventLike {
+    /// Shared resources used in the simulation, such as statistical counters, etc.
     type SharedResources: Default;
+
+    /// Statistics returned after every event in the simulation.
     type EventStats;
 
     /// Performance measure should implement addition and division
